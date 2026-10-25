@@ -1,0 +1,7 @@
+data/raw/wpp/*.csv.gz
+data/raw/statssa/*.zip
+__pycache__/
+.venv/
+node_modules/
+dashboard/dist/
+.pytest_cache/
