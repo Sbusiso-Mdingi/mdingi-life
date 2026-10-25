@@ -2,7 +2,7 @@
 
 Written on 25 October 2026, before any model in this repository was fitted. UN WPP 2024 life tables have been downloaded and six values were read off to check the file (male life expectancy at birth and at 65 in 2006, 2019 and 2021). The WPP deaths and population files were then loaded and their coverage checked (years, ages, missing and zero cells), and one rate (male, 65, 2019: deaths over population 0.0381, against the life table's 0.0390) was computed to confirm the units. Nothing else has been computed. This file is frozen, and its commit hash recorded here, before the first fit. Later changes are listed at the end with their dates and reasons.
 
-Frozen at commit: not yet frozen
+Frozen at commit: `25b5acd95aa5`
 
 The question: how much does uncertainty about future South African mortality move the price of a life annuity, and which models can be trusted to say so?
 
