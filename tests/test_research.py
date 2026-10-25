@@ -49,7 +49,16 @@ def test_annuity_prices_have_intervals(panels):
     assert by[(65, 0.02, 0.7)] > by[(65, 0.04, 0.7)] > by[(65, 0.06, 0.7)]
 
 
-def test_guard_blocks_until_frozen():
+@pytest.mark.parametrize("line", ["Frozen at commit: (filled in at freeze)", "Frozen at commit: `0123456789ab`"])
+def test_guard_blocks_until_frozen(tmp_path, monkeypatch, line):
+    (tmp_path / "PROTOCOL.md").write_text(f"# Protocol\n\n{line}\n")
+    monkeypatch.setattr(protocol, "PROTOCOL", tmp_path / "PROTOCOL.md")
     assert protocol.frozen_hash() is None
     with pytest.raises(SystemExit):
         protocol.require_frozen()
+
+
+def test_guard_passes_once_frozen(tmp_path, monkeypatch):
+    (tmp_path / "PROTOCOL.md").write_text("# Protocol\n\nFrozen at commit: `25b5acd95aa5`\n")
+    monkeypatch.setattr(protocol, "PROTOCOL", tmp_path / "PROTOCOL.md")
+    assert protocol.require_frozen() == "25b5acd95aa5"
