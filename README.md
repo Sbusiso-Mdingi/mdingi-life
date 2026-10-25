@@ -6,7 +6,7 @@ Built in releases. Each one stands on its own and feeds the next.
 
 | Release | Question | Status |
 | --- | --- | --- |
-| v1 Liabilities | How much does uncertainty about South African mortality move the price of a life annuity? | Building |
+| v1 Liabilities | How much does uncertainty about South African mortality move the price of a life annuity? | First run on UN WPP 2024; Stats SA to follow |
 | v2 Assets | What does the SA government bond curve look like each day, and how well do the assets match the liabilities? | Planned |
 | v3 Balance sheet | What is Mdingi Life's SAM solvency capital requirement, and its cover ratio today? | Planned |
 | v4 Scenarios and reporting | Economic scenario generator, IFRS 17 CSM roll-forward, ORSA-style stress tests | Planned |
@@ -46,6 +46,18 @@ python3.12 -m venv .venv && .venv/bin/pip install -r requirements.txt
 ```
 
 Add `--source statssa --deaths <csv> --population <csv>` to run on Stats SA data instead.
+
+The service and dashboard read `data/research.json`, which `research.export` writes.
+
+```
+.venv/bin/pip install -r service/requirements.txt
+cd service && ../.venv/bin/pytest && ../.venv/bin/uvicorn app.main:app --port 8000
+cd dashboard && bun install && bun run dev     # http://localhost:5173, /api proxied to :8000
+cd dashboard && bun run build                  # the service then serves dist/ on :8000
+docker build -t mdingi-life .                  # deploy/azure.sh builds in ACR and rolls out
+```
+
+`GET /api/price?sex=male&age=65&rate=0.04&adj=0.7` answers from the precomputed grid (ages 55, 65, 75; rates 0.02, 0.04, 0.06; factors 0.6, 0.7, 0.8) and returns 400 for anything off it. Add `?embed` to the dashboard URL to drop the page chrome inside an iframe, and `&theme=dark` to match a dark host.
 
 ## Data sources and terms
 

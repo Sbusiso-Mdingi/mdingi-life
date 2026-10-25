@@ -5,3 +5,4 @@ __pycache__/
 node_modules/
 dashboard/dist/
 .pytest_cache/
+docs/screenshots/
