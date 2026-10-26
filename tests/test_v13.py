@@ -9,29 +9,41 @@ from mdingilife.data import Rates
 from mdingilife.models import RenshawHaberman, SmoothRH, smooth
 from tests.test_models import lc_truth
 
-AGES, YEARS = np.arange(50, 90), np.arange(2006, 2020)
+AGES = np.arange(50, 90)
+WINDOWS = {"men, 14 years": 2006, "women, 23 years": 1997}  # v1.2's RH windows, each ending in 2019
 # WPP-sized exposures for South African men: about 300,000 at 50, falling to about 5,000 at 89
-EXPOSURE = np.geomspace(3e5, 5e3, len(AGES))[:, None] * np.ones(len(YEARS))
-COH = YEARS[None, :] - AGES[:, None]
+SIZE = np.geomspace(3e5, 5e3, len(AGES))[:, None]
 
 
-def truth():
-    """a, b and k of the model tests' shape on 2006 to 2019, and a known smooth cohort effect by birth year:
-    a linear trend plus a bump 10 years wide, of size 0.15."""
+def known_g(c: np.ndarray) -> np.ndarray:
+    """A known smooth cohort effect by birth year: a linear trend plus a bump 10 years wide, of size 0.15."""
+    return 0.004 * (c - 1943) + np.where(np.abs(c - 1950) < 5, 0.15 * (1 + np.cos(np.pi * (c - 1950) / 5)) / 2, 0.0)
+
+
+def truth(years: np.ndarray):
+    """a, b and k of the model tests' shape on `years`, and the known g."""
     a, b, k = lc_truth()
-    k = np.interp(np.linspace(0, len(k) - 1, len(YEARS)), np.arange(len(k)), k)
+    k = np.interp(np.linspace(0, len(k) - 1, len(years)), np.arange(len(k)), k)
     k -= k.mean()
-    c = np.arange(COH.min(), COH.max() + 1)
-    g = 0.004 * (c - 1943) + np.where(np.abs(c - 1950) < 5, 0.15 * (1 + np.cos(np.pi * (c - 1950) / 5)) / 2, 0.0)
-    return a, b, k, c, g
+    coh = years[None, :] - AGES[:, None]
+    c = np.arange(coh.min(), coh.max() + 1)
+    return a, b, k, c, known_g(c)
 
 
-def simulated(heap: float = 1.0, seed: int = 3) -> Rates:
-    a, b, k, c, g = truth()
-    log_m = a[:, None] + np.outer(b, k) + g[COH - c[0]]
-    lift = np.where(COH % 10 == 0, heap, 1.0)
-    D = np.random.default_rng(seed).poisson(EXPOSURE * np.exp(log_m) * lift).astype(float)
-    return Rates("Male", AGES, YEARS, D, EXPOSURE.copy())
+def draw(a, b, k, c, g, years, E, heap: float = 1.0, seed: int = 3) -> Rates:
+    coh = years[None, :] - AGES[:, None]
+    log_m = a[:, None] + np.outer(b, k) + g[coh - c[0]]
+    lift = np.where(coh % 10 == 0, heap, 1.0)
+    D = np.random.default_rng(seed).poisson(E * np.exp(log_m) * lift).astype(float)
+    return Rates("Male", AGES, years, D, E.copy())
+
+
+def simulated(first: int = 2006, heap: float = 1.0, seed: int = 3) -> Rates:
+    years = np.arange(first, 2020)
+    return draw(*truth(years), years, SIZE * np.ones(len(years)), heap, seed)
+
+
+both = pytest.mark.parametrize("first", list(WINDOWS.values()), ids=list(WINDOWS))
 
 
 def interior(m) -> np.ndarray:
@@ -59,22 +71,25 @@ def test_smoother_ends_are_cut_not_padded():
     assert (s[~ok] == 0).all()  # not estimated: stays 0 and never enters a mean
 
 
-def test_v12_fit_is_unchanged_without_a_span():
-    r = simulated()
+@both
+def test_v12_fit_is_unchanged_without_a_span(first):
+    r = simulated(first)
     m = RenshawHaberman().fit(r)
     assert m.converged and RenshawHaberman.SPAN is None
     assert np.abs(m.g).max() > 0.01
 
 
-def test_smoothed_fit_converges_and_sums_to_zero():
-    m = SmoothRH().fit(simulated())
+@both
+def test_smoothed_fit_converges_and_sums_to_zero(first):
+    m = SmoothRH().fit(simulated(first))
     assert m.converged and m.change < 1e-9
     assert m.g[m.ok].sum() == pytest.approx(0, abs=1e-10)
     assert (m.g[~m.ok] == 0).all()
 
 
-def test_two_starts_agree_and_smoothing_does_not_fit_better():
-    r = simulated(heap=1.15)
+@both
+def test_two_starts_agree_and_smoothing_does_not_fit_better(first):
+    r = simulated(first, heap=1.15)
     raw = RenshawHaberman().fit(r)
     one, two = SmoothRH().fit(r), SmoothRH().fit(r, g0=raw.g)
     assert one.converged and two.converged
@@ -89,32 +104,33 @@ def detrend(v: np.ndarray, est: np.ndarray) -> np.ndarray:
     return v[est] - np.polyval(np.polyfit(x, v[est], 1), x)
 
 
+def recovery_error(r: Rates, c: np.ndarray, g: np.ndarray) -> tuple[float, float, float]:
+    """Largest miss at the interior cohorts, after a straight line is removed from both, and the bump's height
+    in the fit and in the target (the five-year mean of the true g)."""
+    m = SmoothRH().fit(r)
+    assert m.converged
+    est = np.flatnonzero(m.ok)
+    target = smooth(np.where(m.ok, g, 0.0), m.ok, 5)
+    fit, want = detrend(m.g, est), detrend(target, est)
+    return float(np.abs(fit - want)[2:-2].max()), float(fit.max()), float(want.max())
+
+
 @pytest.mark.parametrize("first", [
-    pytest.param(2006, marks=pytest.mark.xfail(strict=True, reason="pre-freeze result: fails on the 14-year post-peak window "
-                                                                    "(error 0.045; the bump recovered at 0.062 of 0.104)")),
-    1997,
+    pytest.param(2006, id="men, 14 years", marks=pytest.mark.xfail(
+        strict=True, reason="seen before the freeze: misses by 0.045 on the 14-year window (the bump recovered at 0.062 of 0.104)")),
+    pytest.param(1997, id="women, 23 years"),
 ])
 def test_recovers_a_known_cohort_effect(first):
     years = np.arange(first, 2020)
-    coh = years[None, :] - AGES[:, None]
-    a, b, k = lc_truth()
-    k = np.interp(np.linspace(0, len(k) - 1, len(years)), np.arange(len(k)), k)
-    k -= k.mean()
-    c = np.arange(coh.min(), coh.max() + 1)
-    g = 0.004 * (c - 1943) + np.where(np.abs(c - 1950) < 5, 0.15 * (1 + np.cos(np.pi * (c - 1950) / 5)) / 2, 0.0)
-    E = np.geomspace(3e5, 5e3, len(AGES))[:, None] * np.ones(len(years))
-    D = np.random.default_rng(3).poisson(E * np.exp(a[:, None] + np.outer(b, k) + g[coh - c[0]])).astype(float)
-    m = SmoothRH().fit(Rates("Male", AGES, years, D, E))
-    assert m.converged
-    est = np.flatnonzero(m.ok)
-    err = detrend(m.g, est) - detrend(smooth(np.where(m.ok, g, 0.0), m.ok, 5), est)
-    assert np.abs(err[2:-2]).max() < 0.03
+    a, b, k, c, g = truth(years)
+    assert recovery_error(draw(a, b, k, c, g, years, SIZE * np.ones(len(years))), c, g)[0] < 0.03
 
 
-def test_heaped_spikes_are_damped():
-    r = simulated(heap=1.15)
+@both
+def test_heaped_spikes_are_damped(first):
+    r = simulated(first, heap=1.15)
     raw, sm = RenshawHaberman().fit(r), SmoothRH().fit(r)
-    c0 = COH.min()
+    c0 = int(r.years[0] - r.ages[-1])
     rounds = [j for j in interior(sm) if (j + c0) % 10 == 0]
     assert rounds
     spike = lambda m: np.mean([m.g[j] - (m.g[j - 1] + m.g[j + 1]) / 2 for j in rounds])

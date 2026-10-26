@@ -62,3 +62,18 @@ def test_guard_passes_once_frozen(tmp_path, monkeypatch):
     (tmp_path / "PROTOCOL.md").write_text("# Protocol\n\nFrozen at commit: `6335c9c5c418`\n")
     monkeypatch.setattr(protocol, "PROTOCOL", tmp_path / "PROTOCOL.md")
     assert protocol.require_frozen() == "6335c9c5c418"
+
+
+def test_v13_runs_and_decides(monkeypatch):
+    from research import v13
+    panels = {"Male": fake("Male", 1), "Female": fake("Female", 2)}
+    panels = {s: r.sub(AGES, [y for y in YEARS if y <= 2019]) for s, r in panels.items()}
+    windows = {"Male": dict.fromkeys(("LC", "CBD", "RH"), "post-peak"), "Female": {"LC": "post-peak", "CBD": "post-peak", "RH": "full"}}
+    v12w = {s: {"LC": 0.0, "CBD": 0.0, "RH": 1.0} for s in panels}
+    out = v13.run(panels, windows, v12w, np.random.default_rng(0), paths=60, refits=3, log=lambda *a: None)
+    v12g = ({"Male": 13.24, "Female": 13.18}, {"Male": {"2020": 14.38, "2030": 15.11}, "Female": {"2020": 16.88, "2030": 16.73}})
+    out["decision"] = v13.decide(out, v12g)
+    assert set(out["origins"]) == {"A", "B"} and "v1.2" in out["origins"]["B"]["Male"]
+    assert out["origins"]["A"]["Female"]["v1.3"]["anchored"]["cells"] == 120
+    assert not out["decision"]["gate"]["v1.2"]["passes"] and out["decision"]["gate"]["v1"]["passes"]
+    assert v13.combined(out, v12g)["prices_on"].keys() == {"Male", "Female"}

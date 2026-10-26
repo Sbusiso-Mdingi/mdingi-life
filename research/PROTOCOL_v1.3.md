@@ -2,7 +2,7 @@
 
 Written on 26 October 2026, after v1.2 was run and reported (`RESULTS_v1.2.md`), and before any v1.3 code was written or run. A revision made in response to v1.2's results. v1, v1.1 and v1.2 stay as reported. **This is the last mortality iteration.** Whatever it shows is published, and the mortality model is then final.
 
-Amended on 26 October 2026, after review and before any v1.3 code was written: the heaping check ("Seen beforehand"), the smoother's ends and convergence checks, the simulated recovery test, and an upper bound on Q2. Amended again the same day, after review and still before any code: a plausibility gate.
+Amended on 26 October 2026, after review and before any v1.3 code was written: the heaping check ("Seen beforehand"), the smoother's ends and convergence checks, the simulated recovery test, and an upper bound on Q2. Amended again the same day, after review and still before any code: a plausibility gate. Amended a third time the same day, before the freeze: the pre-freeze test results, including a failed recovery test, under "Reporting".
 
 Frozen at commit: (not yet frozen)
 
@@ -115,7 +115,20 @@ As v1.1 and v1.2, at both origins, with v1.2 alongside: the tests, every model's
 - **recovery of a known cohort effect on simulated data**: deaths drawn as Poisson from an RH model with a, b and k of the model tests' shape, exposures falling from 300,000 at 50 to 5,000 at 89 (WPP-sized for South African men), and a known smooth γ (a linear trend plus a bump 10 years wide, of size 0.15), on both windows (2006 to 2019, as men's, and 1997 to 2019, as women's). The smoothed fit converges, and its γ matches the five-year mean of the true γ to within 0.03 at every interior cohort, after a straight line in birth year is removed from both: a linear trend in γ is not identified separately from age and period in RH, so no fit can recover it. Then a heaped version (deaths at birth years ending in 0 scaled up by 15%): the smoothed fit's spikes at those years are under a third of the unsmoothed fit's;
 - convergence from the two starts agrees, as above.
 
-**Pre-freeze test result, 26 October 2026.** Two changes to the recovery test were made when it was first run, before the freeze: the linear trend is removed before comparing (on the first run the smoothed fit missed by 0.12, almost all of it the unidentified trend), and v1.2's men's a, b and k were replaced by the model tests' shape so the test runs without the Stats SA data. After that, every test passes except one. **On the 14-year post-peak window the smoothed fit does not recover the cohort bump**: it recovers 0.062 of the target 0.104, and misses by 0.045 against the 0.03 allowed. The unsmoothed fit misses by 0.028 on the same data. On the 23-year full window the smoothed fit passes (0.020 to 0.024). So, on a short window, smoothing inside the iteration lets the age and period terms take up part of a real cohort effect, beyond what the five-year average itself removes. The failing case is kept in the test file as an expected failure. Convergence, the two starts, the deviance check and the damping of heaped spikes all pass (tested on the 14-year window).
+**Pre-freeze test results, amended 26 October 2026, seen before the freeze.**
+
+- *Changes to the recovery test, made after its first run failed.* On its first run the smoothed fit missed by 0.12. Two changes were then made: (1) the cohort effects are detrended (a straight line in birth year removed from both the fit and the target) before comparing, because a linear trend in γ is not identified in RH, and almost all of the first miss was that trend; (2) made-up parameters (the model tests' a, b and k, and exposures shaped like WPP's) replaced v1.2's fitted men's values, so the test runs without the Stats SA data. Both were made after seeing the first failure.
+- *The recovery test fails for the men's 14-year window*: a miss of **0.045 against a tolerance of 0.03**; the bump comes back at 0.062 of a target 0.104, so smoothing absorbs about 40% of a real cohort effect on this window. The unsmoothed fit missed by 0.028 on the same data. On the women's 23-year window the smoothed fit passes (miss 0.020, bump 0.098 of 0.105). **This failure was seen before the freeze. It is a reported limitation, not a freeze blocker.** The method is not changed because of it. The failing case stays in `tests/test_v13.py` as an expected failure.
+- *Run once with v1.2's fitted men's values* (`research/v13_recovery.py`, `research/results/v13_recovery.json`: v1.2's production a, b and k for men, 2006 to 2019, its real exposures, the same known γ): a miss of **0.023**, inside the tolerance; the bump comes back at 0.083 of 0.105 (about 21% absorbed).
+- *The other tests on both windows*, made-up parameters:
+
+  | | Men, 14 years | Women, 23 years |
+  | --- | --- | --- |
+  | Converges (iterations; last change) | yes (587; 9.8 × 10⁻¹⁰) | yes (672; 9.8 × 10⁻¹⁰) |
+  | Two starts agree (largest gap in log rates) | yes (1.1 × 10⁻⁷) | yes (9.7 × 10⁻¹¹) |
+  | Smoothed deviance not below unsmoothed (heaped data) | yes (2,269 against 419) | yes (3,570 against 806) |
+  | Heaped spikes, unsmoothed then smoothed | 0.143, 0.001: passes | 0.142, 0.001: passes |
+
 
 ## After mortality is final
 
