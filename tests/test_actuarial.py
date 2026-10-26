@@ -96,3 +96,11 @@ def test_panel_rejects_holes():
                        "deaths": 1.0, "exposure": 100.0})
     with pytest.raises(ValueError):
         panel(df, "Male")
+
+
+def test_flat_forwards_match_a_flat_rate():
+    m = np.linspace(0.01, 0.4, 56)
+    flat = annuity.factor(m, 0.04, 0.7)
+    assert annuity.factor(m, adj=0.7, forwards=np.full(60, np.log1p(0.04))) == pytest.approx(flat, rel=1e-12)
+    rising = np.linspace(0.02, 0.06, 60)
+    assert annuity.factor(m, 0.02, 0.7) > annuity.factor(m, adj=0.7, forwards=rising) > annuity.factor(m, 0.07, 0.7)

@@ -7,18 +7,23 @@ from __future__ import annotations
 import numpy as np
 
 
-def factor(m: np.ndarray, rate: float, adj: float = 1.0) -> np.ndarray:
+def factor(m: np.ndarray, rate: float | None = None, adj: float = 1.0, forwards: np.ndarray | None = None) -> np.ndarray:
     """Annuity factor for a life at the first age of `m` (last axis: successive years of age).
 
+    Discounting is at a flat annual `rate`, or at `forwards`, the continuously compounded forward rate for each
+    year ahead (from a zero curve), constant within the year like the force of mortality.
     adj multiplies every rate, standing in for the lighter mortality of people who buy annuities.
     """
     mu = adj * np.asarray(m, float)
-    delta = np.log1p(rate)
-    j = np.arange(mu.shape[-1])
-    alive = np.exp(-np.concatenate([np.zeros(mu.shape[:-1] + (1,)), np.cumsum(mu, axis=-1)[..., :-1]], axis=-1))
+    n = mu.shape[-1]
+    delta = np.full(n, np.log1p(rate)) if forwards is None else np.asarray(forwards, float)[:n]
+    if len(delta) < n:
+        raise ValueError(f"need forward rates for {n} years")
+    cum = lambda x: np.concatenate([np.zeros(x.shape[:-1] + (1,)), np.cumsum(x, axis=-1)[..., :-1]], axis=-1)
+    alive = np.exp(-cum(mu))
     f = delta + mu
     months = (1 - np.exp(-f)) / (1 - np.exp(-f / 12))
-    return (np.exp(-delta * j) * alive * months).sum(axis=-1) / 12
+    return (np.exp(-cum(delta)) * alive * months).sum(axis=-1) / 12
 
 
 def cohort(log_m: np.ndarray, ages: np.ndarray, age: int, start: int) -> np.ndarray:

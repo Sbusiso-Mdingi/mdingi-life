@@ -150,13 +150,20 @@ def auctions(ref: pd.DataFrame) -> pd.DataFrame:
             for name, s in pd.read_excel(path, sheet_name=None, header=None, engine=engine).items():
                 d = long(s) if "2010-13" in path.name else wide(s)
                 if len(d):
-                    parts.append(d.assign(file=path.name, sheet=name))
+                    parts.append(d.assign(source=kind, file=path.name, sheet=name))
     d = pd.concat(parts, ignore_index=True)
     for k in ("allocated", "clearing", "best", "worst", "coupon", "maturity_year"):
         d[k] = pd.to_numeric(d.get(k), errors="coerce")
     d["bond"] = d["bond"].astype(str).str.upper().str.replace(r"[^A-Z0-9]", "", regex=True)
     d["bond"] = d["bond"].where(~d["bond"].str.fullmatch(r"\d{3,4}"), "R" + d["bond"]).replace(ALIASES)
+    # An inflation-linked workbook that labels a bond R20xx means I20xx (R2038 in 2012, before the fixed-rate R2038).
+    old = (d["source"] == "ilb") & d["bond"].str.fullmatch(r"R\d{4}")
+    d.loc[old, "bond"] = "I" + d.loc[old, "bond"].str[1:]
     d = d[d["bond"].str.fullmatch(r"[RI]\d{1,4}") & d["auction_date"].notna()]  # drops blank and summary columns
+    # Most sheets of 2012-16, and single cells elsewhere, hold yields in cells formatted as percentages, which read
+    # as fractions (0.0887 for 8.87%). No auction cleared under 0.25%, so a value under 0.25 is multiplied by 100.
+    for k in ("clearing", "best", "worst"):
+        d.loc[d[k].between(0, 0.25, inclusive="neither"), k] *= 100
 
     # The bond's terms come from the schedules. The sheets' own coupon and year labels are often copied from a
     # neighbouring column, so the code is trusted and a disagreement is only flagged.

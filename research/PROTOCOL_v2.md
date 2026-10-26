@@ -94,3 +94,12 @@ What it showed: Treasury auctions the same few bonds week after week, so 28 days
 - Nothing else changes: B0's 91 days, the periods, the screen, the tests and their pass marks.
 
 Reason: the frozen window was too short for how Treasury auctions, which the design period exists to find out. The cost is staleness: a window can hold yields up to three months old, which the backtest charges for.
+
+### 26 October 2026: a parse error in the yields, found in the design run
+
+Written after the second design run (91 days) and before any validation run. That run's design scores were seen: fixed-rate RMSE 85 (LI), 52 (NS) and 55 (NSS) basis points, B0 88; inflation-linked 17 (LI), 17 (NS), B0 17. It chose NS for fixed-rate bonds and LI for inflation-linked ones. It is kept as `curves_design_91_misparsed.json` and reported.
+
+Its largest errors came from the parse, not the market. Most of the 2012–16 workbooks, and single cells elsewhere, hold yields in cells formatted as percentages, which were read as fractions: 0.0887 for 8.87%. About 445 fixed-rate and 500 inflation-linked clearing yields were 100 times too small. The screen caught them where they were mixed with correct yields, but whole windows on the wrong scale fitted each other. The check against best and worst bids before freezing missed them, because the bids were on the same wrong scale.
+
+- **The fix, in `research/treasury.py`.** No auction cleared under 0.25%, so any clearing yield, best bid or worst bid under 0.25 is multiplied by 100. Five 2012 auctions labelled R2038 in the inflation-linked workbook are I2038 (the fixed-rate R2038 was first issued in 2024): a four-digit R code in an inflation-linked workbook is read as an I code.
+- Nothing else changes. The design period is run again on the corrected data and its choice of curves stands, whatever it is.
