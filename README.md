@@ -35,7 +35,7 @@ research/     fetch, coverage, backtest, annuities, export; PROTOCOL.md and RESU
               book_v3, balance_v3, keyrate_v3; PROTOCOL_v3.md and RESULTS_v3.md
 tests/        every model and formula on simulated data with known answers
 service/      FastAPI app serving the results
-dashboard/    Vite front end, embedded at mdingi.co.za
+dashboard/    Vite front end: the company's site (overview, quotes, customers, investments, capital, how it's built)
 data/book/    v3's invented policies
 data/raw/     source files as downloaded
 ```

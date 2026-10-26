@@ -12,7 +12,8 @@ and validation scores, the validation error by year, the valuation-date curves, 
 matching portfolio.
 
 If balance_v3.json exists it bundles v3 the same way: the balance sheet, the SCR by risk, matched and unmatched, the
-sensitivities, the checks, the funeral table and, if keyrate_v3.json exists, the key-rate matched result.
+sensitivities, the checks, the funeral table, a summary of the invented book with its funeral premium rates, the key-rate
+DV01 of the annuities and of each portfolio and, if keyrate_v3.json exists, the key-rate matched result.
 
 Refuses to run until the protocol is frozen.
 """
@@ -92,6 +93,47 @@ def v2() -> dict | None:
             "data": {k: val["data"][k] for k in ("usable", "screened")}, "by_year": by_year, "curves": curves, **sexes}
 
 
+BOOK = data.ROOT / "data" / "book"
+
+
+def ages(a: pd.Series) -> dict:
+    """Counts in five-year age bands."""
+    c = (a // 5 * 5).value_counts().sort_index()
+    return {"from": [int(x) for x in c.index], "n": [int(x) for x in c]}
+
+
+def book() -> dict:
+    """The invented book in summary, a few policies from it, and the monthly funeral premium by sex, entry age and sum
+    assured (premiums are linear in the sum assured, so two sums give every one)."""
+    ann, fun = pd.read_csv(BOOK / "annuities.csv"), pd.read_csv(BOOK / "funeral.csv")
+    rates = {}
+    for s, g in fun.groupby("sex"):
+        out = []
+        for e, h in g.groupby("entry_age"):
+            p = h.groupby("sum_assured")["premium"].first()
+            per = (p.iloc[-1] - p.iloc[0]) / (p.index[-1] - p.index[0])
+            out.append({"age": int(e), "per_rand": float(per), "fixed": float(p.iloc[0] - per * p.index[0])})
+        rates[s] = out
+    pick = lambda df, by: df.groupby(by).head(1).head(4).to_dict("records")  # the first policy of each kind
+    return {"annuities": {"n": len(ann), "income": float(ann["income"].sum()), "median_income": float(ann["income"].median()),
+                          "types": ann["type"].value_counts().to_dict(), "sexes": ann["sex"].value_counts().to_dict(),
+                          "ages": ages(ann["age"]), "median_age": float(ann["age"].median()),
+                          "sample": pick(ann, ["sex", "type"])},
+            "funeral": {"n": len(fun), "cover": float(fun["sum_assured"].sum()), "premiums": float(fun["premium"].sum() * 12),
+                        "sums": {int(k): int(v) for k, v in fun["sum_assured"].value_counts().sort_index().items()},
+                        "sexes": fun["sex"].value_counts().to_dict(), "ages": ages(fun["age"]),
+                        "median_age": float(fun["age"].median()), "median_premium": float(fun["premium"].median()),
+                        "sample": pick(fun[fun["sum_assured"].isin([10_000, 30_000])], ["sex", "sum_assured"])},
+            "premium_rates": rates, "sums": sorted(int(x) for x in fun["sum_assured"].unique())}
+
+
+def dv01(matching: dict) -> dict:
+    """Key-rate DV01 by curve: the annuities' and the matching portfolio's (units times each bond's)."""
+    return {kind: {"liability": v["liability"]["dv01"],
+                   "portfolio": {t: sum(n * v["bonds"][c]["dv01"][t] for c, n in v["units"].items())
+                                 for t in v["liability"]["dv01"]}} for kind, v in matching.items()}
+
+
 def v3() -> dict | None:
     f = OUT / "balance_v3.json"
     if not f.exists():
@@ -108,6 +150,7 @@ def v3() -> dict | None:
         kr = json.loads(kf.read_text())
         k = kr["key_rate"]
         key = sheet(k) | {"rate_losses": k["rate_losses"], "checks": kr["checks"],
+                          "dv01": dv01(k["assets"]["matching"]),
                           "holdings": {kind: {c: n * v["bonds"][c]["value"] for c, n in v["units"].items()}
                                        for kind, v in k["assets"]["matching"].items()}}
     return {"protocol": b["protocol"]["v3"], "valuation_date": b["valuation_date"], "curve_dates": b["curve_dates"],
@@ -117,7 +160,7 @@ def v3() -> dict | None:
                                 "matching": {k: {"liability": v["liability"], "bonds": {
                                     c: {"duration": bd["duration"], "value": v["units"][c] * bd["value"]}
                                     for c, bd in v["bonds"].items()}} for k, v in m["assets"]["matching"].items()},
-                                "scr_ru": m["scr_ru"]},
+                                "scr_ru": m["scr_ru"], "dv01": dv01(m["assets"]["matching"])},
             "unmatched": sheet(b["unmatched"]),
             "sensitivities": {k: sheet(r) for k, r in b["sensitivities"].items()},
             "checks": {"K1": {"worst_relative": k1["worst_relative"], "pass": k1["pass"], "cells": k1["cells"],
@@ -125,6 +168,7 @@ def v3() -> dict | None:
                        **{k: b["checks"][k] for k in ("K3", "K4", "K5")}},
             "funeral_table": {"ages": sorted(tab["age"].unique().tolist()),
                               **{s: tab[tab["sex"] == s].sort_values("age")["mu"].round(6).tolist() for s in data.SEXES}},
+            "book": book() if (BOOK / "funeral.csv").exists() else None,
             "key_rate": key}
 
 

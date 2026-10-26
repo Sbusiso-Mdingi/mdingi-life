@@ -56,6 +56,26 @@ export type Sheet = {
   life: Record<"mortality" | "longevity" | "lapse" | "expense" | "catastrophe", number>;
   interest: Record<"nominal" | "real" | "combined", number>;
 };
+export type DV01 = Record<"real" | "nominal", { liability: Record<string, number>; portfolio: Record<string, number> }>;
+export type Ages = { from: number[]; n: number[] };
+export type Pensioner = { id: number; sex: Sex; age_at_purchase: number; years_since_purchase: number; age: number; type: "inflation-linked" | "level"; income: number };
+export type FuneralPolicy = { id: number; sex: Sex; entry_age: number; years_in_force: number; age: number; sum_assured: number; premium: number };
+export type Book = {
+  annuities: { n: number; income: number; median_income: number; types: Record<string, number>; sexes: Record<Sex, number>; ages: Ages; median_age: number; sample: Pensioner[] };
+  funeral: {
+    n: number;
+    cover: number;
+    premiums: number;
+    sums: Record<string, number>;
+    sexes: Record<Sex, number>;
+    ages: Ages;
+    median_age: number;
+    median_premium: number;
+    sample: FuneralPolicy[];
+  };
+  premium_rates: Record<Sex, { age: number; per_rand: number; fixed: number }[]>;
+  sums: number[];
+};
 export type V3 = {
   protocol: string;
   valuation_date: string;
@@ -70,13 +90,16 @@ export type V3 = {
     assets: Record<"total" | "bill" | "matched", number>;
     matching: Record<"real" | "nominal", { liability: Risk; bonds: Record<string, { duration: number; value: number }> }>;
     scr_ru: { t0: number; annuity_weight: number; by_year: number[] };
+    dv01: DV01;
   };
+  book?: Book | null;
   unmatched: Sheet;
   sensitivities: Record<string, Sheet>;
   key_rate?: Sheet & {
     rate_losses: Record<string, number>;
     checks: { K6: { key_rate: number; duration: number; pass: boolean } };
     holdings: Record<"real" | "nominal", Record<string, number>>;
+    dv01: DV01;
   };
   checks: {
     K1: { worst_relative: number; pass: boolean; scenarios: number };
