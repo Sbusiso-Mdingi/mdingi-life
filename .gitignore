@@ -7,6 +7,7 @@ dashboard/dist/
 .pytest_cache/
 docs/screenshots/
 data/raw/statssa/mcd/
+data/raw/statssa/census/
 data/raw/treasury/fixed/
 data/raw/treasury/ilb/
 data/raw/treasury/ref/

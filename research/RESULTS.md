@@ -143,6 +143,17 @@ WPP 1 July population at ages 50 to 79 over Stats SA's own projection (P0302 wor
 
 Until 2016, WPP puts 6% to 12% fewer people aged 50 to 79 than Stats SA does, so rates on WPP exposure are higher. From 2016 to 2019 WPP's population grows about 7% faster for men and 3.5% faster for women, which would make rates on WPP exposure fall faster than on Stats SA's. This is a second drift, in the denominator, of the same size as the completeness drift and in the same direction. It is reported, not corrected: the protocol has no Stats SA single-age exposure to correct it with.
 
+SuperWEB2 came back on 26 October 2026 but holds no mid-year estimates, only the counts. WPP, interpolated to each count's reference night, over Stats SA's weighted counts by single age (Census 2011, Community Survey 2016, Census 2022; `exposure_census_check.csv`):
+
+| | Census 2011 | CS 2016 | Census 2022 |
+| --- | --- | --- | --- |
+| Men, all ages | 1.018 | 1.017 | 1.001 |
+| Men 55-59 / 60-64 / 65-69 / 70-74 | 0.89 / 0.90 / 0.93 / 0.93 | 0.97 / 0.92 / 0.91 / 0.91 | 1.00 / 1.01 / 1.00 / 0.97 |
+| Women, all ages | 1.037 | 1.035 | 0.998 |
+| Women 55-59 / 60-64 / 65-69 / 70-74 | 0.97 / 0.96 / 0.99 / 1.06 | 1.11 / 1.02 / 0.96 / 0.94 | 0.99 / 1.01 / 0.99 / 0.98 |
+
+The counts tell the same story as P0302. WPP 2024 agrees with Census 2022 to within 3% at every age from 50 to 74, as it should, since WPP was revised to that census. Back in 2011 and 2016 it has 7% to 11% fewer men aged 55 to 74 than the counts, so the denominator drift found above is in the counts too, not only in Stats SA's projection. Above 75 the ratios move by 10% to 70% between counts, which reflects age misreporting and the survey's sample at those ages, not a trend. Changing the exposure is outside the protocol; this is reported as a known bias of the Stats SA run: before 2016, rates on WPP exposure overstate men's mortality at 55 to 74 by up to a tenth.
+
 ## Decomposition (exploratory)
 
 **Outside the protocol**, added after the results above were known and labelled as such. Two extra WPP runs (`annuities.py --model ... --last-year 2019 --tag ...`) fill the steps between the two pre-registered runs, so each row changes one thing from the row above. Price at 4% and factor 0.7, gap against the WPP run:
@@ -163,5 +174,5 @@ So the 23% headline gap at 65 is mostly model choice and jump-off. The pre-regis
 
 ## Still to do
 
-- Rerun on Stats SA single-age mid-year estimates if SuperWEB comes back, as the protocol first intended.
+- Rerun on Stats SA single-age mid-year estimates if they are ever published by single age (SuperWEB2 holds only the census counts, checked above). Until then, an exposure built from the 2011 and 2022 censuses is the alternative.
 - v2: replace the flat discount rate with the fitted government bond curve.
