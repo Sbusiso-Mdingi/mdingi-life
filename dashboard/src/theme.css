@@ -20,6 +20,9 @@
   /* Series: validated with the dataviz palette check on this surface, light and dark. */
   --men: #2f5f9e;
   --women: #a8741c;
+  --s1: #0b8268;
+  --s2: #5b5bb5;
+  --s3: #c0632b;
   --font-sans: "Archivo", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, monospace;
   --font-serif: "Newsreader", ui-serif, Georgia, serif;
@@ -637,6 +640,9 @@ td.small,
   --highlight: #232f28;
   --men: #5a8bd0;
   --women: #bf8a2e;
+  --s1: #1f9c7c;
+  --s2: #7f81dc;
+  --s3: #cc6a30;
 }
 :root[data-theme="dark"] body.embedded {
   background: transparent;
@@ -800,4 +806,21 @@ a {
 }
 .legend + .chart {
   margin-top: 10px;
+}
+.part {
+  padding: 40px 0 8px;
+  border-top: 2px solid var(--foreground);
+  margin-top: 24px;
+}
+.part h2 {
+  font-size: 30px;
+  line-height: 1.2;
+  margin: 6px 0 0;
+  max-width: 34ch;
+}
+.part h2 em {
+  color: var(--muted-foreground);
+}
+.verdict.muted {
+  color: var(--muted-foreground);
 }

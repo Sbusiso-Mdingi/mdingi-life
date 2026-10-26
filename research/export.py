@@ -7,6 +7,10 @@ annuities.py), with the observed series, Covid years included, to set against it
 With --source statssa it also bundles the comparison with the WPP run: annuity prices from each run in COMPARE that
 exists, the completeness of registration and the WPP/Stats SA population check.
 
+If annuities_v2.json exists it bundles v2 as well, from the saved results only (nothing is refitted): the curves' design
+and validation scores, the validation error by year, the valuation-date curves, the annuity prices on them and the
+matching portfolio.
+
 Refuses to run until the protocol is frozen.
 """
 from __future__ import annotations
@@ -45,6 +49,44 @@ def compare() -> dict:
     table = lambda name: (lambda t: {"years": t.index.tolist(), **{s: t[s].tolist() for s in data.SEXES}})(
         pd.read_csv(OUT / name, index_col=0))
     return {"runs": runs, "completeness": table("completeness.csv"), "exposure": table("exposure_check.csv")}
+
+
+def v2() -> dict | None:
+    f = OUT / "annuities_v2.json"
+    if not f.exists():
+        return None
+    an = json.loads(f.read_text())
+    design, val = (json.loads((OUT / f"curves_{p}.json").read_text()) for p in ("design", "validation"))
+    keep = lambda d: {k: d[k] for k in ("curves", "all")}
+    pr = pd.read_csv(OUT / "curves_validation_predictions.csv", parse_dates=["date"])
+    by_year = {}
+    for kind, g in pr.groupby("kind"):
+        cols = ["LI", "NS", "B0"] + (["NSS"] if kind == "fixed" else [])
+        g = g.dropna(subset=cols)
+        rmse = lambda e: float(np.sqrt(np.mean(e ** 2)) * 1e4)
+        yrs = sorted(g["date"].dt.year.unique())
+        by_year[kind] = {"years": [int(y) for y in yrs], "n": [int((g["date"].dt.year == y).sum()) for y in yrs],
+                         **{c: [round(rmse(g.loc[g["date"].dt.year == y, c] - g.loc[g["date"].dt.year == y, "y"]), 2)
+                                for y in yrs] for c in cols}}
+    curves = {}
+    for kind, c in an["curves"].items():
+        t = np.arange(1, 41)
+        z = {m: np.cumsum(f)[:40] / t for m, f in c["forwards"].items()}
+        curves[kind] = {"date": c["date"], "longest": c["longest"], "bonds": c["bonds"], "years": t.tolist(),
+                        # zero rates at semi-annual compounding, to sit beside the bonds' yields
+                        "zero": {m: np.round(2 * np.expm1(v / 2), 6).tolist() for m, v in z.items()},
+                        "forwards": {m: np.round(f[:40], 6).tolist() for m, f in c["forwards"].items()}}
+    sexes = {}
+    for s in data.SEXES:
+        a = an[s]
+        m = a["matching"]
+        held = m["portfolio"]["holdings_per_100_nominal"]
+        sexes[s] = {"model": a["model"], "jump_off": a["jump_off"], "prices": a["prices"],
+                    "matching": {"annuity": m["annuity"], "portfolio": m["portfolio"],
+                                 "bonds": {k: m["bonds"][k] for k in held}}}
+    return {"protocol": an["protocol"]["v2"], "design": keep(design) | {"chosen": design["chosen"]},
+            "validation": keep(val) | {"without_covid": val["without_covid"], "tests": val["tests"]},
+            "data": {k: val["data"][k] for k in ("usable", "screened")}, "by_year": by_year, "curves": curves, **sexes}
 
 
 def e65(log_m: np.ndarray, ages: np.ndarray) -> np.ndarray:
@@ -105,6 +147,8 @@ def main() -> None:
     out["history"] = history()
     if a.source == "statssa":
         out["compare"] = compare()
+    if (b := v2()) is not None:
+        out["v2"] = b
     (data.ROOT / "data" / "research.json").write_text(json.dumps(out, default=float))
     print("wrote data/research.json")
 

@@ -60,6 +60,7 @@ export function YearChart({
   points = [],
   notes = [],
   fmt,
+  xFmt = String,
   height = 300,
 }: {
   label: string;
@@ -68,6 +69,7 @@ export function YearChart({
   points?: Points[];
   notes?: Note[];
   fmt: (v: number) => string;
+  xFmt?: (x: number) => string;
   height?: number;
 }) {
   const H = height;
@@ -157,7 +159,7 @@ export function YearChart({
       onBlur={() => setHover(null)}
       tabIndex={0}
       role="img"
-      aria-label={`${label}. Use the arrow keys to read values by year.`}
+      aria-label={`${label}. Use the arrow keys to read values along the axis.`}
     >
       {notes
         .filter((n) => n.x1 != null)
@@ -213,7 +215,7 @@ export function YearChart({
           <g transform={`translate(${tipX} ${pad.t + 4})`}>
             <rect width={tipW} height={26 + 16 * tip.length} fill="var(--background)" stroke="var(--border-strong)" />
             <text x="10" y="17" style={{ fill: "var(--foreground)" }}>
-              {hover}
+              {xFmt(hover)}
             </text>
             {tip.map((r, k) => (
               <g key={r.key} transform={`translate(10 ${33 + 16 * k})`}>
@@ -301,6 +303,96 @@ export function IntervalChart({ label, rows, fmt, groups }: { label: string; row
           </g>
         );
       })}
+    </svg>
+  );
+}
+
+export type BarGroup = { key: string; label: string; values: { key: string; label: string; color: string; value: number }[] };
+
+/** Grouped bars from a zero baseline, 4px rounded tops, 2px gaps. Hover or focus a group for its values. */
+export function BarChart({ label, groups, fmt, height = 240 }: { label: string; groups: BarGroup[]; fmt: (v: number) => string; height?: number }) {
+  const ref = useRef<SVGSVGElement>(null);
+  const W = useWidth(ref);
+  const H = height;
+  const pad = { l: 44, r: 14, t: 12, b: 28 };
+  const [hover, setHover] = useState<string | null>(null);
+  const hi = Math.max(...groups.flatMap((g) => g.values.map((v) => v.value)), 0);
+  const yt = niceTicks(0, hi, 4);
+  const y = scaleLinear(0, Math.max(hi, yt[yt.length - 1]), H - pad.b, pad.t);
+  const slot = (W - pad.l - pad.r) / groups.length;
+  const per = groups[0]?.values.length ?? 1;
+  const bw = Math.min(36, (slot * 0.6 - 2 * (per - 1)) / per);
+  const bar = (x0: number, v: number) => {
+    const top = y(v);
+    const h = y(0) - top;
+    const r = Math.min(4, h, bw / 2);
+    return `M${x0} ${y(0)}V${top + r}Q${x0} ${top} ${x0 + r} ${top}H${x0 + bw - r}Q${x0 + bw} ${top} ${x0 + bw} ${top + r}V${y(0)}Z`;
+  };
+  const tipW = 200;
+  return (
+    <svg ref={ref} className="chart" viewBox={`0 0 ${W} ${H}`} role="img" aria-label={label} onPointerLeave={() => setHover(null)}>
+      {yt.map((t) => (
+        <g key={t}>
+          <path d={`M${pad.l} ${y(t)}H${W - pad.r}`} stroke="var(--border)" />
+          <text x={pad.l - 8} y={y(t) + 3} textAnchor="end">
+            {fmt(t)}
+          </text>
+        </g>
+      ))}
+      {groups.map((g, i) => {
+        const cx = pad.l + slot * (i + 0.5);
+        const x0 = cx - (per * bw + 2 * (per - 1)) / 2;
+        const lit = hover === g.key;
+        return (
+          <g
+            key={g.key}
+            tabIndex={0}
+            onPointerEnter={() => setHover(g.key)}
+            onFocus={() => setHover(g.key)}
+            onBlur={() => setHover(null)}
+            aria-label={`${g.label}: ${g.values.map((v) => `${v.label} ${fmt(v.value)}`).join(", ")}`}
+          >
+            <rect x={cx - slot / 2} y={pad.t} width={slot} height={H - pad.b - pad.t} fill={lit ? "var(--foreground)" : "transparent"} opacity={lit ? 0.05 : 1} />
+            {g.values.map((v, j) =>
+              v.value > 0 ? (
+                <path key={v.key} d={bar(x0 + j * (bw + 2), v.value)} fill={v.color} />
+              ) : (
+                <path key={v.key} d={`M${x0 + j * (bw + 2)} ${y(0) - 1}h${bw}`} stroke={v.color} strokeWidth="2" />
+              ),
+            )}
+            <text x={cx} y={H - 8} textAnchor="middle">
+              {g.label}
+            </text>
+          </g>
+        );
+      })}
+      <path d={`M${pad.l} ${y(0)}H${W - pad.r}`} stroke="var(--border-strong)" />
+      {hover != null &&
+        (() => {
+          const i = groups.findIndex((g) => g.key === hover);
+          const g = groups[i];
+          const cx = pad.l + slot * (i + 0.5);
+          const tx = cx + slot / 2 + tipW > W ? cx - slot / 2 - tipW : cx + slot / 2;
+          return (
+            <g pointerEvents="none" transform={`translate(${tx} ${pad.t + 4})`}>
+              <rect width={tipW} height={26 + 16 * g.values.length} fill="var(--background)" stroke="var(--border-strong)" />
+              <text x="10" y="17" style={{ fill: "var(--foreground)" }}>
+                {g.label}
+              </text>
+              {g.values.map((v, k) => (
+                <g key={v.key} transform={`translate(10 ${33 + 16 * k})`}>
+                  <rect x="0" y="-8" width="10" height="9" rx="2" fill={v.color} />
+                  <text x="18" y="0" className="tip-value">
+                    {fmt(v.value)}
+                  </text>
+                  <text x={tipW - 20} y="0" textAnchor="end">
+                    {v.label}
+                  </text>
+                </g>
+              ))}
+            </g>
+          );
+        })()}
     </svg>
   );
 }

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { api, type Price, type Quote, type Research, type Sex } from "./api";
-import { IntervalChart, YearChart, type Band, type Interval, type Points, type Series } from "./charts";
+import { api, type Kind, type Price, type Quote, type Research, type Rmse, type Sex, type V2 } from "./api";
+import { BarChart, IntervalChart, YearChart, type Band, type BarGroup, type Interval, type Points, type Series } from "./charts";
 import { SEX_LABEL, num, pct, thousands } from "./format";
 
 const SEXES: Sex[] = ["Male", "Female"];
@@ -120,7 +120,7 @@ export function App({ embedded }: { embedded: boolean }) {
     <div className="preview">
       <header className="head" id="hero">
         <div>
-          <p className="eyebrow">Live preview · Mdingi Life · v1 Liabilities</p>
+          <p className="eyebrow">Live preview · Mdingi Life · v1 Liabilities{r.v2 ? " · v2 Assets" : ""}</p>
           <h1 className="serif">
             Mdingi Life is a fictional South African life insurer. <em>v1 prices its annuities.</em>
           </h1>
@@ -163,6 +163,20 @@ export function App({ embedded }: { embedded: boolean }) {
       <Explorer r={r} />
       {r.compare && <Sources r={r} />}
       <Sensitivity r={r} />
+      {r.v2 && (
+        <>
+          <header className="part" id="v2">
+            <p className="eyebrow">v2 Assets · protocol {r.v2.protocol}</p>
+            <h2 className="serif">
+              The annuities, discounted on the South African government bond curve. <em>And the bonds that would back them.</em>
+            </h2>
+          </header>
+          <CurvePanel v={r.v2} />
+          <CurveBacktest v={r.v2} />
+          <CurvePrices v={r.v2} r={r} />
+          <Matching v={r.v2} />
+        </>
+      )}
       <Method r={r} />
 
       <p className="footer-note">
@@ -818,7 +832,7 @@ function Sensitivity({ r }: { r: Research }) {
           )}
           <p>
             <strong>Flat discount rate</strong>
-            v1 discounts at a flat 2%, 4% or 6%. v2 replaces it with the fitted South African government bond curve.
+            v1 discounts at a flat 2%, 4% or 6%. v2 replaces it with the fitted South African government bond curve{r.v2 ? ": see below" : ""}.
           </p>
         </div>
       </div>
@@ -898,6 +912,431 @@ function Method({ r }: { r: Research }) {
           </a>
         </li>
       </ul>
+    </section>
+  );
+}
+
+// v2 Assets ---------------------------------------------------------------------------------------------------------
+
+const KINDS: Kind[] = ["ilb", "fixed"];
+const KIND_LABEL: Record<Kind, string> = { ilb: "Inflation-linked", fixed: "Fixed-rate" };
+const CURVE_COLOR = { LI: "var(--s1)", NS: "var(--s2)", B0: "var(--s3)" } as const;
+const KEYS = ["5", "10", "20", "30"];
+const longDate = (d: string) => new Date(`${d}T00:00:00`).toLocaleDateString("en-ZA", { day: "numeric", month: "long", year: "numeric" });
+const bp = (v: number) => `${num(v, 1)}bp`;
+const rm = (s: Record<string, Rmse | number>, k: string) => (s[k] as Rmse | undefined)?.rmse;
+const v2find = (v: V2, s: Sex, age: number, adj: number) => v[s].prices.find((p) => p.age === age && Math.abs(p.adj - adj) < 1e-9)!;
+
+function CurvePanel({ v }: { v: V2 }) {
+  const [kind, setKind] = useState<Kind>("ilb");
+  const [view, setView] = useState<"zero" | "forwards">("zero");
+  const c = v.curves[kind];
+  const ys = view === "zero" ? c.zero : c.forwards;
+  const series: Series[] = [
+    { key: "LI", label: "LI zero curve", color: CURVE_COLOR.LI, xs: c.years, ys: ys.LI },
+    { key: "NS", label: "Nelson-Siegel", color: CURVE_COLOR.NS, xs: c.years, ys: ys.NS, dash: true },
+  ];
+  const points: Points[] = view === "zero" ? [{ key: "bonds", label: "Clearing yield", color: "var(--foreground)", xs: c.bonds.map((b) => b.maturity), ys: c.bonds.map((b) => b.yield) }] : [];
+  const fl = c.forwards.LI;
+  const longest = Math.floor(c.longest);
+  const tail = fl[fl.length - 1];
+  return (
+    <section className="panel" id="curve">
+      <div className="panel-head">
+        <div>
+          <p className="eyebrow">
+            {KIND_LABEL[kind]} bonds · auctions in the 91 days to {longDate(c.date)}
+          </p>
+          <h2 className="serif">{kind === "ilb" ? "The real curve is close to flat at about 4%" : "The nominal curve rises from about 8.5% to 10.5%"}</h2>
+        </div>
+        <Segmented label="Bonds" value={kind} onChange={setKind} options={KINDS.map((k) => ({ id: k, label: k === "ilb" ? "Real" : "Nominal" }))} />
+      </div>
+      <div className="controls">
+        <div className="control">
+          <span className="label">Rate</span>
+          <Segmented
+            label="Rate"
+            value={view}
+            onChange={setView}
+            options={[
+              { id: "zero", label: "Zero rates" },
+              { id: "forwards", label: "Forward rates" },
+            ]}
+          />
+        </div>
+      </div>
+      <Legend
+        items={[
+          { label: "LI zero curve (chosen)", color: CURVE_COLOR.LI },
+          { label: "Nelson-Siegel", color: CURVE_COLOR.NS, kind: "dash" },
+          ...(view === "zero" ? [{ label: "Bond clearing yields", color: "var(--foreground)", kind: "dot" as const }] : []),
+        ]}
+      />
+      <YearChart
+        label={`${KIND_LABEL[kind]} ${view === "zero" ? "zero rates" : "one-year forward rates"} by years from settlement, ${longDate(c.date)}`}
+        series={series}
+        points={points}
+        notes={[{ x0: c.longest, label: `Longest bond, ${num(c.longest, 1)} years`, short: `${longest}y`, row: 0, anchor: "end" }]}
+        fmt={(x) => pct(x, 2)}
+        xFmt={(x) => `${x} years`}
+        height={280}
+      />
+      <p className="note">
+        {view === "zero"
+          ? `Zero rates at semi-annual compounding, beside each bond's clearing yield at its final redemption. The LI zero curve reprices all ${c.bonds.length} bonds exactly; Nelson-Siegel is a smooth fit through them.`
+          : `The rate for each single year ahead. The LI zero curve's forwards are constant between bonds and held flat beyond the longest, here at ${pct(tail, 2)}.`}{" "}
+        {kind === "fixed"
+          ? `Its forwards are lumpy: bonds that mature close together, with yields that differ, need large swings between them to price exactly. ${pct(Math.max(...fl), 2)} beyond ${longest} years against Nelson-Siegel's ${pct(c.forwards.NS[c.forwards.NS.length - 1], 2)}.`
+          : "Real forwards stay between about 3.5% and 4.6% out to the longest bond."}
+      </p>
+      <TableView>
+        <table>
+          <thead>
+            <tr>
+              <th>Bond</th>
+              <th className="num">Years to final redemption</th>
+              <th className="num">Clearing yield</th>
+            </tr>
+          </thead>
+          <tbody>
+            {c.bonds.map((b) => (
+              <tr key={b.bond}>
+                <td className="mono">{b.bond}</td>
+                <td className="num">{num(b.maturity, 1)}</td>
+                <td className="num">{pct(b.yield, 2)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        <table style={{ marginTop: 16 }}>
+          <thead>
+            <tr>
+              <th className="num">Year</th>
+              <th className="num">LI zero</th>
+              <th className="num">NS zero</th>
+              <th className="num">LI forward</th>
+              <th className="num">NS forward</th>
+            </tr>
+          </thead>
+          <tbody>
+            {c.years
+              .filter((y) => y === 1 || y % 5 === 0)
+              .map((y) => (
+                <tr key={y}>
+                  <td className="num">{y}</td>
+                  <td className="num">{pct(c.zero.LI[y - 1], 2)}</td>
+                  <td className="num">{pct(c.zero.NS[y - 1], 2)}</td>
+                  <td className="num">{pct(c.forwards.LI[y - 1], 2)}</td>
+                  <td className="num">{pct(c.forwards.NS[y - 1], 2)}</td>
+                </tr>
+              ))}
+          </tbody>
+        </table>
+      </TableView>
+    </section>
+  );
+}
+
+function CurveBacktest({ v }: { v: V2 }) {
+  const [kind, setKind] = useState<Kind>("fixed");
+  const t = v.validation.tests;
+  const b = v.by_year[kind];
+  const series: Series[] = (["LI", "NS", "B0"] as const).map((k) => ({
+    key: k,
+    label: k === "B0" ? "Last yield (B0)" : k === "LI" ? "LI (chosen)" : "Nelson-Siegel",
+    color: CURVE_COLOR[k],
+    xs: b.years,
+    ys: b[k],
+    dash: k === "B0",
+  }));
+  const va = v.validation.all;
+  const gap = (k: Kind) => t[k].C1_rmse.B0 - t[k].C1_rmse.LI;
+  const tests: { id: string; claim: string; verdicts: (boolean | null)[]; plain: string }[] = [
+    {
+      id: "C1",
+      claim: "The curve beats each bond's own last yield",
+      verdicts: KINDS.map((k) => t[k].C1),
+      plain: `By ${bp(gap("fixed"))} on fixed-rate bonds and ${bp(gap("ilb"))} on inflation-linked. Treasury auctions the same few bonds week after week, so their last yields are recent and a curve adds little.`,
+    },
+    {
+      id: "C2",
+      claim: "Svensson beats Nelson-Siegel",
+      verdicts: [null, t.fixed.C2 ?? null],
+      plain: `${bp(t.fixed.C2_rmse!.NSS)} against ${bp(t.fixed.C2_rmse!.NS)} on fixed-rate bonds. Too few inflation-linked bonds are auctioned to fit Svensson.`,
+    },
+    {
+      id: "C3",
+      claim: "Root mean square error under 25bp",
+      verdicts: KINDS.map((k) => t[k].C3),
+      plain: `${bp(t.ilb.C3_rmse)} on inflation-linked bonds, ${bp(t.fixed.C3_rmse)} on fixed-rate. Without March to May 2020: ${bp(rm(v.validation.without_covid.curves.ilb, "LI")!)} and ${bp(rm(v.validation.without_covid.curves.fixed, "LI")!)}.`,
+    },
+  ];
+  const row = (label: string, s: Record<string, Rmse | number>, cols: string[]) => (
+    <tr key={label}>
+      <td>{label}</td>
+      <td className="num">{thousands(s.n as number)}</td>
+      {cols.map((k) => (
+        <td key={k} className="num">
+          {rm(s, k) == null ? "" : num(rm(s, k)!, 1)}
+        </td>
+      ))}
+    </tr>
+  );
+  const cols = ["LI", "NS", "NSS", "B0"];
+  return (
+    <section className="panel" id="curve-backtest">
+      <div className="panel-head">
+        <div>
+          <p className="eyebrow">Backtest · each auction predicted from the 91 days before it · chosen on 2010 to 2017, scored on 2018 to 2026</p>
+          <h2 className="serif">The curve only just beats a bond's last yield</h2>
+        </div>
+      </div>
+      <ul className="tests">
+        {tests.map((x) => (
+          <li key={x.id}>
+            <div className="test-head">
+              <span className="mono small">{x.id}</span>
+              <strong>{x.claim}</strong>
+              {x.verdicts.map((p, i) => (p == null ? <span key={i} className="verdict muted">{KIND_LABEL[KINDS[i]]} not tested</span> : <Verdict key={i} pass={p} who={KIND_LABEL[KINDS[i]]} />))}
+            </div>
+            <p className="plain" style={{ marginLeft: 34 }}>
+              {x.plain}
+            </p>
+          </li>
+        ))}
+      </ul>
+
+      <div className="panel-head" style={{ marginTop: 28 }}>
+        <div>
+          <p className="eyebrow">Error by year, on the auctions every method could price</p>
+          <h3 className="serif">{KIND_LABEL[kind]} bonds: root mean square error of the predicted clearing yield</h3>
+        </div>
+        <Segmented label="Bonds" value={kind} onChange={setKind} options={(["fixed", "ilb"] as Kind[]).map((k) => ({ id: k, label: KIND_LABEL[k] }))} />
+      </div>
+      <Legend items={series.map((s) => ({ label: s.label, color: s.color, kind: s.dash ? ("dash" as const) : undefined }))} />
+      <YearChart label={`${KIND_LABEL[kind]} bonds: prediction error by year and method`} series={series} fmt={(x) => `${num(x, 0)}bp`} height={260} notes={[{ x0: 2020, label: "Covid sell-off, March to May 2020", short: "Covid", row: 0, anchor: "start" }]} />
+      <p className="note">
+        The three lines move together: what is hard to predict is the market, not the curve. Nelson-Siegel would have been {bp(rm(va[kind], "LI")! - rm(va[kind], "NS")!)} better
+        than LI over 2018 to 2026, but the design years preferred LI and the choice stands as made.
+      </p>
+      <TableView>
+        <table>
+          <thead>
+            <tr>
+              <th>Period and bonds</th>
+              <th className="num">Auctions</th>
+              {cols.map((k) => (
+                <th key={k} className="num">
+                  {k}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {KINDS.flatMap((k) => [
+              row(`Design, ${KIND_LABEL[k].toLowerCase()}`, v.design.all[k], cols),
+              row(`Validation, ${KIND_LABEL[k].toLowerCase()}`, va[k], cols),
+              row(`Validation without March to May 2020, ${KIND_LABEL[k].toLowerCase()}`, v.validation.without_covid.all[k], cols),
+            ])}
+          </tbody>
+        </table>
+        <p className="note">Root mean square error in basis points, on the auctions all methods could price. {thousands(v.data.usable)} clearing yields in all; {v.data.screened} screened out.</p>
+      </TableView>
+    </section>
+  );
+}
+
+function CurvePrices({ v, r }: { v: V2; r: Research }) {
+  const [product, setProduct] = useState<"inflation-linked" | "level">("inflation-linked");
+  const [adj, setAdj] = useState(0.7);
+  const key = `${product} LI`;
+  const rows: Interval[] = SEXES.flatMap((s) =>
+    AGES.map((a) => {
+      const p = v2find(v, s, a, adj)[key];
+      return { key: `${s}${a}`, label: `${SEX_LABEL[s]}, ${a}`, color: COLOR[s], lo: p.lo, median: p.median, hi: p.hi, tag: `· ${pct(p.implied_flat_rate, 2)}` };
+    }),
+  );
+  const ilb = (s: Sex) => v2find(v, s, 65, adj)["inflation-linked LI"];
+  const flat4 = (s: Sex) => find(r.annuities[s].prices, 65, 0.04, adj).median;
+  const ratio = (s: Sex, a: number) => v2find(v, s, a, adj)["level LI"].median / v2find(v, s, a, adj)["inflation-linked LI"].median;
+  const ratios = SEXES.flatMap((s) => AGES.map((a) => ratio(s, a)));
+  return (
+    <section className="panel" id="curve-price">
+      <div className="panel-head">
+        <div>
+          <p className="eyebrow">Annuity prices on the curve · same mortality as v1, bought in 2026</p>
+          <h2 className="serif">v1's flat 4% was close to what the market pays</h2>
+        </div>
+      </div>
+      <section className="hero-figures" aria-label="Inflation-linked annuity at 65 on the real curve">
+        {SEXES.map((s) => (
+          <Metric key={s} value={`${ilb(s).median / flat4(s) - 1 >= 0 ? "+" : ""}${pct(ilb(s).median / flat4(s) - 1)}`} label={`${SEX_LABEL[s]}, 65, inflation-linked`} sub={`${f2(ilb(s).median)} on the real curve against ${f2(flat4(s))} at a flat 4%`} />
+        ))}
+      </section>
+      <p className="note">
+        At factor {adj.toFixed(1)}, the real curve is worth a flat {pct(ilb("Male").implied_flat_rate, 2)} for men and {pct(ilb("Female").implied_flat_rate, 2)} for women at 65, so the
+        price moves by less than its own mortality interval.
+      </p>
+      <div className="controls" style={{ marginTop: 18 }}>
+        <div className="control">
+          <span className="label">Product</span>
+          <Segmented
+            label="Product"
+            value={product}
+            onChange={setProduct}
+            options={[
+              { id: "inflation-linked", label: "Inflation-linked, real curve" },
+              { id: "level", label: "Level, nominal curve" },
+            ]}
+          />
+        </div>
+        <div className="control">
+          <span className="label">Annuitant factor</span>
+          <Segmented label="Annuitant factor" value={adj} onChange={setAdj} options={ADJS.map((x) => ({ id: x, label: x.toFixed(1) }))} />
+        </div>
+      </div>
+      <p className="eyebrow" style={{ margin: "18px 0 8px" }}>
+        {product === "inflation-linked" ? "Inflation-linked" : "Level"} annuity of 1 a year: median, 95% interval and the flat rate that gives the same price
+      </p>
+      <Legend items={SEXES.map((s) => ({ label: SEX_LABEL[s], color: COLOR[s] }))} />
+      <IntervalChart label={`${product} annuity price on the bond curve by sex and age, factor ${adj.toFixed(1)}`} rows={rows} fmt={f2} groups={2} />
+      <p className="note">
+        {product === "level"
+          ? `A level annuity costs ${pct(Math.min(...ratios), 0)} to ${pct(Math.max(...ratios), 0)} of an inflation-linked one: its payments are discounted at nominal yields near 10%, and the buyer carries the inflation.`
+          : "Payments rise with inflation, so they are discounted on the real (inflation-linked) curve."}{" "}
+        Intervals carry mortality uncertainty only; the curve is taken as known. On Nelson-Siegel instead, prices move by under 2%: see the table.
+      </p>
+      <TableView>
+        <table>
+          <thead>
+            <tr>
+              <th>Sex</th>
+              <th className="num">Age</th>
+              <th className="num">Flat 2% / 4% / 6%</th>
+              <th className="num">Inflation-linked, LI</th>
+              <th className="num">Implied</th>
+              <th className="num">NS</th>
+              <th className="num">Level, LI</th>
+              <th className="num">Implied</th>
+              <th className="num">NS</th>
+            </tr>
+          </thead>
+          <tbody>
+            {SEXES.flatMap((s) =>
+              AGES.map((a) => {
+                const p = v2find(v, s, a, adj);
+                return (
+                  <tr key={`${s}${a}`}>
+                    <td>{SEX_LABEL[s]}</td>
+                    <td className="num">{a}</td>
+                    <td className="num">{["0.02", "0.04", "0.06"].map((k) => f2(p.flat[k])).join(" / ")}</td>
+                    <td className="num">
+                      {f2(p["inflation-linked LI"].median)} [{f2(p["inflation-linked LI"].lo)}, {f2(p["inflation-linked LI"].hi)}]
+                    </td>
+                    <td className="num">{pct(p["inflation-linked LI"].implied_flat_rate, 2)}</td>
+                    <td className="num">{f2(p["inflation-linked NS"].median)}</td>
+                    <td className="num">
+                      {f2(p["level LI"].median)} [{f2(p["level LI"].lo)}, {f2(p["level LI"].hi)}]
+                    </td>
+                    <td className="num">{pct(p["level LI"].implied_flat_rate, 2)}</td>
+                    <td className="num">{f2(p["level NS"].median)}</td>
+                  </tr>
+                );
+              }),
+            )}
+          </tbody>
+        </table>
+      </TableView>
+    </section>
+  );
+}
+
+function Matching({ v }: { v: V2 }) {
+  const [sex, setSex] = useState<Sex>("Female");
+  const m = v[sex].matching;
+  const held = Object.entries(m.portfolio.holdings_per_100_nominal);
+  const per = (x: number) => x * 1e4; // per R10,000 a year of income
+  const groups: BarGroup[] = KEYS.map((k) => ({
+    key: k,
+    label: `${k} years`,
+    values: [
+      { key: "a", label: "Annuity", color: "var(--s1)", value: per(m.annuity.dv01[k]) },
+      { key: "p", label: "Two-bond portfolio", color: "var(--s2)", value: per(m.portfolio.dv01[k]) },
+    ],
+  }));
+  const long = per(m.annuity.dv01["30"]);
+  const share = (m.annuity.dv01["20"] + m.annuity.dv01["30"]) / KEYS.reduce((a, k) => a + m.annuity.dv01[k], 0);
+  return (
+    <section className="panel" id="match">
+      <div className="panel-head">
+        <div>
+          <p className="eyebrow">Matching · inflation-linked annuity at 65, factor 0.7, real LI zero curve</p>
+          <h2 className="serif">Two bonds match the duration, not the shape</h2>
+        </div>
+        <Segmented label="Sex" value={sex} onChange={setSex} options={SEXES.map((s) => ({ id: s, label: SEX_LABEL[s] }))} />
+      </div>
+      <div className="metrics">
+        <Metric className="sans" value={f2(m.annuity.value)} label="Annuity value" sub="per 1 a year" />
+        <Metric className="sans" value={`${num(m.annuity.duration, 1)} years`} label="Effective duration" sub="1bp parallel shift of the zero curve" />
+        <Metric className="sans" value={held.map(([b]) => b).join(" + ")} label="Matching bonds" sub={held.map(([b]) => `${b} ${num(m.bonds[b].duration, 1)}y`).join(", ")} />
+      </div>
+      <p className="eyebrow" style={{ margin: "22px 0 8px" }}>
+        Key-rate DV01: value lost for a 1bp rise at each key rate, rand per R10,000 a year of income
+      </p>
+      <Legend
+        items={[
+          { label: "Annuity", color: "var(--s1)" },
+          { label: "Two-bond portfolio", color: "var(--s2)" },
+        ]}
+      />
+      <BarChart label={`Key-rate DV01 of the ${SEX_LABEL[sex].toLowerCase()}'s annuity at 65 and of the matching portfolio`} groups={groups} fmt={(x) => num(x, 0)} />
+      <p className="note">
+        The two in-issue inflation-linked bonds whose durations bracket the annuity's, held to match its value and duration. A parallel move leaves the book matched.
+        But {pct(share, 0)} of the annuity's rate risk sits at 20 and 30 years, where the portfolio holds {num(per(m.portfolio.dv01["30"]), 0)} against the annuity's{" "}
+        {num(long, 0)} at 30 years. A move in long real rates alone hits one side of the book only. Closing it needs the longest bonds, I2050 and I2058.
+      </p>
+      <TableView>
+        <table>
+          <thead>
+            <tr>
+              <th>Key rate</th>
+              <th className="num">Annuity</th>
+              <th className="num">Portfolio</th>
+              <th className="num">Mismatch</th>
+            </tr>
+          </thead>
+          <tbody>
+            {KEYS.map((k) => (
+              <tr key={k}>
+                <td>{k} years</td>
+                <td className="num">{num(per(m.annuity.dv01[k]), 1)}</td>
+                <td className="num">{num(per(m.portfolio.dv01[k]), 1)}</td>
+                <td className="num">{num(per(m.portfolio.dv01[k] - m.annuity.dv01[k]), 1)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        <table style={{ marginTop: 16 }}>
+          <thead>
+            <tr>
+              <th>Bond</th>
+              <th className="num">Price per 100</th>
+              <th className="num">Duration</th>
+              <th className="num">Nominal held per 1 a year</th>
+            </tr>
+          </thead>
+          <tbody>
+            {held.map(([b, n]) => (
+              <tr key={b}>
+                <td className="mono">{b}</td>
+                <td className="num">{f2(m.bonds[b].value)}</td>
+                <td className="num">{num(m.bonds[b].duration, 2)}</td>
+                <td className="num">{f2(n * 100)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </TableView>
     </section>
   );
 }
