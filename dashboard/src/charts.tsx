@@ -253,7 +253,7 @@ export function IntervalChart({ label, rows, fmt, groups }: { label: string; row
   const gap = groups ? 12 : 0;
   const per = groups ? rows.length / groups : rows.length;
   const longest = Math.max(...rows.map((r) => r.label.length));
-  const pad = narrow ? { l: 150, r: 14, t: 8, b: 30 } : { l: Math.max(80, 7.2 * longest + 28), r: 190, t: 8, b: 30 };
+  const pad = narrow ? { l: Math.max(150, Math.ceil(6.5 * longest + 20)), r: 14, t: 8, b: 30 } : { l: Math.max(80, 7.2 * longest + 28), r: 190, t: 8, b: 30 };
   const H = pad.t + pad.b + rows.length * rowH + (groups ? (groups - 1) * gap : 0);
   const [hover, setHover] = useState<string | null>(null);
   const lo = Math.min(...rows.map((r) => r.lo));
@@ -314,14 +314,17 @@ export function BarChart({ label, groups, fmt, height = 240 }: { label: string; 
   const ref = useRef<SVGSVGElement>(null);
   const W = useWidth(ref);
   const H = height;
-  const pad = { l: 44, r: 14, t: 12, b: 28 };
   const [hover, setHover] = useState<string | null>(null);
   const hi = Math.max(...groups.flatMap((g) => g.values.map((v) => v.value)), 0);
   const yt = niceTicks(0, hi, 4);
+  // Room for the longest tick label at 11px (about 6.5px a character), and the 8px gap to the axis
+  const pad = { l: Math.max(44, Math.ceil(6.5 * Math.max(...yt.map((t) => fmt(t).length)) + 12)), r: 14, t: 12, b: 28 };
   const y = scaleLinear(0, Math.max(hi, yt[yt.length - 1]), H - pad.b, pad.t);
   const slot = (W - pad.l - pad.r) / groups.length;
   const per = groups[0]?.values.length ?? 1;
   const bw = Math.min(36, (slot * 0.6 - 2 * (per - 1)) / per);
+  // On narrow screens, label every second (or third) group when the labels would collide
+  const every = Math.ceil((6.5 * Math.max(...groups.map((g) => g.label.length)) + 6) / slot);
   const bar = (x0: number, v: number) => {
     const top = y(v);
     const h = y(0) - top;
@@ -360,9 +363,11 @@ export function BarChart({ label, groups, fmt, height = 240 }: { label: string; 
                 <path key={v.key} d={`M${x0 + j * (bw + 2)} ${y(0) - 1}h${bw}`} stroke={v.color} strokeWidth="2" />
               ),
             )}
-            <text x={cx} y={H - 8} textAnchor="middle">
-              {g.label}
-            </text>
+            {i % every === 0 && (
+              <text x={cx} y={H - 8} textAnchor="middle">
+                {g.label}
+              </text>
+            )}
           </g>
         );
       })}

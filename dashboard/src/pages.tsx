@@ -105,16 +105,19 @@ function Fiction() {
 }
 
 /** The first starting capital at which 95% of futures stay covered every year, if any level reached it. */
-/** Industry-typical starting capital, about 1.8 times the SCR: the upper reference point for the 95% crossing. */
+/** Industry-typical starting capital, about 1.8 times the SCR: a reference point shown beside the 95% crossing. */
 const REFERENCE = 627e6;
 
-/** The levels either side of 95%: the highest run below it, and R627m (or the first level above 95%, if R627m is not). */
-export const crossing = (r: Research) => {
-  const L = r.v4?.capital?.levels ?? [];
-  const hi = L.find((x) => x.own_funds === REFERENCE && x.share_covered >= 0.95) ?? L.find((x) => x.share_covered >= 0.95);
+type Levels = NonNullable<NonNullable<Research["v4"]>["capital"]>["levels"];
+
+/** The completed levels either side of 95%: the lowest run at or above it, and the highest run below that. */
+const levelsAround = (L: Levels) => {
+  const hi = L.find((x) => x.share_covered >= 0.95);
   const lo = hi && [...L].reverse().find((x) => x.own_funds < hi.own_funds && x.share_covered < 0.95);
   return hi && lo ? { lo, hi } : null;
 };
+
+export const crossing = (r: Research) => levelsAround(r.v4?.capital?.levels ?? []);
 
 type Finding = { key: string; figure: string; pill?: ReactNode; text: ReactNode; tab?: Tab };
 
@@ -198,9 +201,9 @@ export function Overview({ r, go }: { r: Research; go: Go }) {
                   text: cross ? (
                     <>
                       of starting capital, instead of {randM(levels[0].own_funds)}, is where the share of futures staying covered every year crosses 95%:{" "}
-                      {pct(cross.lo.share_covered, 0)} at {randM(cross.lo.own_funds)}, {pct(cross.hi.share_covered, 0)} at {randM(cross.hi.own_funds)}. Even at{" "}
+                      {pct(cross.lo.share_covered, 1)} at {randM(cross.lo.own_funds)}, {pct(cross.hi.share_covered, 1)} at {randM(cross.hi.own_funds)}. Even at{" "}
                       {randM(cross.hi.own_funds)}, longer-living pensioners take cover to {coverPct(cross.hi.stresses["S2 Longevity"])}. I added these runs
-                      after seeing the first result. They use the v1 mortality model.
+                      after seeing the first result. They are final, on the original mortality model (v1).
                     </>
                   ) : (
                     <>
@@ -221,7 +224,7 @@ export function Overview({ r, go }: { r: Research; go: Go }) {
       text: (
         <>
           The mortality forecast's 95% ranges caught fewer than 90% of the death rates that actually happened in the backtest
-          {p3.Male !== p3.Female ? ` for ${p3.Male ? "women" : "men"}` : ", for men and women"}, so every pension range on this site, all from the v1 mortality model, is a lower
+          {p3.Male !== p3.Female ? ` for ${p3.Male ? "women" : "men"}` : ", for men and women"}, so every pension range on this site, all from the original mortality model (v1), is a lower
           bound on the real uncertainty.
         </>
       ),
@@ -287,7 +290,7 @@ export function Overview({ r, go }: { r: Research; go: Go }) {
             <span className="num-badge">1</span>
             <h3>Pricing the pensions</h3>
             <p>
-              I forecast how long people live from 26 years of Stats SA death records, on the v1 mortality model, with ranges from simulated futures.
+              I forecast how long people live from 26 years of Stats SA death records, on the original mortality model (v1), with ranges from simulated futures.
               {pension && " A woman of 65 who wants R10,000 a month for life, rising with inflation, would pay once:"}
             </p>
             {pension && <div className="figure">{randFull(Math.round(pension / 100) * 100)}</div>}
@@ -376,7 +379,7 @@ export function Overview({ r, go }: { r: Research; go: Go }) {
 // Get a quote -------------------------------------------------------------------------------------------------------
 
 // The mortality model version that prices each sex: v1 for both, final after v1.1 to v1.3 failed (research/RESULTS_v1.3.md).
-const PRICED_ON: Record<Sex, string> = { Male: "v1", Female: "v1" };
+const PRICED_ON: Record<Sex, string> = { Male: "original mortality model (v1)", Female: "original mortality model (v1)" };
 
 export function Quote({ r }: { r: Research }) {
   const v2 = r.v2!;
@@ -453,7 +456,7 @@ export function Quote({ r }: { r: Research }) {
                 {kind === "level" ? "Your income stays fixed, so inflation slowly eats it." : "Your income keeps its buying power."}
               </span>
               <span className="line">
-                Priced on the {PRICED_ON[sex]} mortality model for {sex === "Male" ? "men" : "women"}.
+                Priced on the {PRICED_ON[sex]} for {sex === "Male" ? "men" : "women"}.
               </span>
             </div>
           </div>
@@ -506,8 +509,8 @@ export function Quote({ r }: { r: Research }) {
         <IntervalChart label={`Price of a pension of ${randFull(monthly)} a month by sex and age at retirement, R million`} rows={rows} fmt={(x) => `R${x.toFixed(2)}m`} groups={2} />
         <p className="note">
           The price depends on how long you will live, and nobody knows that for sure. I forecast it from Stats SA death records and simulate thousands of
-          possible futures; the bar is the middle 95% of them. Women live longer, so their pensions cost more. Men's prices use the{" "}
-          {PRICED_ON.Male} mortality model and women's the {PRICED_ON.Female} model. Three revisions (v1.1 to v1.3) were tested and none passed, so v1 prices both, and its ranges are lower bounds. Of the versions tested, v1 for both sexes is the only one that passes the plausibility gate, applied to both sexes together: women's pensions cost more than men's, and life expectancy at 65 rises for both.
+          possible futures; the bar is the middle 95% of them. Women live longer, so their pensions cost more. Men's and women's prices both use
+          the {PRICED_ON.Male}. Three later revisions were tested and none passed, so it prices both, and its ranges are lower bounds. Of the versions tested, v1 for both sexes is the only one that passes the plausibility gate, applied to both sexes together: women's pensions cost more than men's, and life expectancy at 65 rises for both.
         </p>
         <LowerBound />
         <div className="callout">
@@ -594,7 +597,7 @@ export function Customers({ r }: { r: Research }) {
         </a>
         : pensions bought at 55 to 75 with incomes spread around R60,000 a year, and funeral policies taken out at around 38 for R10,000 to R30,000 of cover.
         The shapes are my choices, not taken from any insurer's data. Funeral premiums are priced on a table of 2017 to 2019 death rates; the life
-        expectancy forecast below is the v1 mortality model, which prices the pensions.
+        expectancy forecast below is the original mortality model (v1), which prices the pensions.
       </PageHead>
 
       <div className="grid two">
@@ -809,6 +812,7 @@ export function Investments({ r }: { r: Research }) {
 
 export function Capital({ r }: { r: Research }) {
   const v = r.v3!;
+  const cross = crossing(r);
   const m = v.main, u = v.unmatched, k = v.key_rate;
   const now = current(v);
   const median = v.checks.K5.industry_median;
@@ -835,7 +839,7 @@ export function Capital({ r }: { r: Research }) {
     <>
       <PageHead kicker="Capital" title="Is there enough capital?">
         The Prudential Authority asks every insurer to hold enough capital to survive a 1-in-200 year: the solvency capital requirement. Solvency cover is the
-        capital held divided by that requirement, and it has to be at least 100%. The pensions are valued on the v1 mortality model; funeral claims on a
+        capital held divided by that requirement, and it has to be at least 100%. The pensions are valued on the original mortality model (v1); funeral claims on a
         table of 2017 to 2019 death rates.
       </PageHead>
 
@@ -846,6 +850,17 @@ export function Capital({ r }: { r: Research }) {
         <Stat label="Capital required" value={randM(now.scr)} sub="To survive a 1-in-200 year" />
         <Stat label="Capital held" value={randM(now.own_funds)} sub={`${coverPct(median)} cover, the life industry's typical level, would need ${randM(now.scr * median)}`} />
       </div>
+      {cross && (
+        <p className="note">
+          With more capital, the share of five-year futures that stay covered every year crosses the 95% target between {randM(cross.lo.own_funds)} (
+          {pct(cross.lo.share_covered, 1)}) and {randM(cross.hi.own_funds)} ({pct(cross.hi.share_covered, 1)}), the two completed runs either side of it; the
+          precision was fixed before the {randM(cross.lo.own_funds)} result was seen, and no further points were run to narrow it.{" "}
+          {cross.lo.stresses["S1 Rates fall"] < 1 && cross.hi.stresses["S1 Rates fall"] >= 1
+            ? `At ${randM(cross.lo.own_funds)} a fall in interest rates still takes cover below 100% (${coverPct(cross.lo.stresses["S1 Rates fall"])}); at ${randM(cross.hi.own_funds)} it clears (${coverPct(cross.hi.stresses["S1 Rates fall"])}), so that is roughly where the rate risk stops binding. `
+            : ""}
+          These runs were added after the first result, and are on the Next five years page.
+        </p>
+      )}
 
       <section className="panel">
         <div className="panel-head">
@@ -927,10 +942,10 @@ function AnnuitantSensitivity({ v }: { v: NonNullable<Research["v3"]> }) {
         <table>
           <thead>
             <tr>
-              <th>Pensioners' death rates, share of everyone's</th>
-              <th className="num">Owed to customers</th>
-              <th className="num">Capital required</th>
-              <th className="num">Solvency cover</th>
+              <th>Death rates</th>
+              <th className="num">Owed</th>
+              <th className="num">Required</th>
+              <th className="num">Cover</th>
             </tr>
           </thead>
           <tbody>
@@ -938,7 +953,7 @@ function AnnuitantSensitivity({ v }: { v: NonNullable<Research["v3"]> }) {
               <tr key={adj}>
                 <td>
                   {pct(adj, 0)}
-                  {adj === 0.7 ? " (used everywhere)" : ""}
+                  {adj === 0.7 ? " (used)" : ""}
                 </td>
                 <td className="num">{randM(s.bel.total)}</td>
                 <td className="num">{randM(s.scr)}</td>
@@ -1206,7 +1221,7 @@ export function Built({ r }: { r: Research }) {
               before any level was run. After R600m to R1,000m had run, I stopped at R500m rather than narrowing to the nearest R25m, and report the crossing
               as an interval (<Commit hash="55fbcb9" when="16:15" />, before the R500m result). Every level used the same 1,000 futures, regenerated from
               the same seed on the same calibration, and the same five disasters. {cross &&
-                `${randM(cross.lo.own_funds)} kept ${pct(cross.lo.share_covered, 1)} of futures covered, so the crossing is reported as lying between ${randM(cross.lo.own_funds)} and ${randM(cross.hi.own_funds)}. `}
+                `${randM(cross.lo.own_funds)} kept ${pct(cross.lo.share_covered, 1)} of futures covered and ${randM(cross.hi.own_funds)} ${pct(cross.hi.share_covered, 1)}, so the crossing is reported as lying between them. The rule at 55fbcb9 named R627m, the industry-typical cover, as the upper point; once every result was in, I report ${randM(cross.hi.own_funds)} instead, as the lowest completed run above 95%, and keep R627m as a reference point. `}
               Like every capital result on this site, it is final, on the v1
               mortality model.
             </li>
@@ -1362,7 +1377,7 @@ export function Future({ r }: { r: Research }) {
     <>
       <PageHead kicker="The next five years" title="Does the cover hold up?">
         A look five years ahead, of the kind the regulator asks every insurer for: a thousand possible paths for interest rates and inflation, and five named
-        disasters, each run through the customers, the bonds and the capital, year by year. The pensions are valued on the v1 mortality model throughout.
+        disasters, each run through the customers, the bonds and the capital, year by year. The pensions are valued on the original mortality model (v1) throughout.
       </PageHead>
 
       <div className="grid three">
@@ -1606,8 +1621,8 @@ export function Future({ r }: { r: Research }) {
 function CapitalCurve({ c }: { c: NonNullable<NonNullable<Research["v4"]>["capital"]> }) {
   const L = c.levels;
   const xs = L.map((x) => x.own_funds / 1e6);
-  const hit = L.find((x) => x.own_funds === REFERENCE && x.share_covered >= 0.95) ?? L.find((x) => x.share_covered >= 0.95);
-  const below = hit && [...L].reverse().find((x) => x.own_funds < hit.own_funds && x.share_covered < 0.95);
+  const around = levelsAround(L);
+  const hit = around?.hi, below = around?.lo;
   const names = Object.keys(L[0].stresses);
   const ref = L.find((x) => x.own_funds === REFERENCE);
   const cleared = ref ? names.filter((n) => ref.stresses[n] >= 1).length : 0;
@@ -1642,13 +1657,16 @@ function CapitalCurve({ c }: { c: NonNullable<NonNullable<Research["v4"]>["capit
         after the first result was seen, not a test set beforehand. Every level uses the same 1,000 futures, regenerated from the same seed on the same
         calibration, and the same five disasters; each extra rand is invested in the same mix of bonds and bills as today's assets.{" "}
         {hit && below
-          ? `The 95% target is crossed between ${randM(below.own_funds)} (${pct(below.share_covered, 1)}) and ${randM(hit.own_funds)} (${pct(hit.share_covered, 1)}), the industry-typical cover of about 1.8 times. I report it at that precision, as decided before the ${randM(below.own_funds)} result was seen, and ran no points to narrow it.`
+          ? `The 95% target is crossed between ${randM(below.own_funds)} (${pct(below.share_covered, 1)}) and ${randM(hit.own_funds)} (${pct(hit.share_covered, 1)}), the two completed runs either side of it. The precision was fixed before the ${randM(below.own_funds)} result was seen, and no further points were run to narrow it.${ref ? ` ${randM(ref.own_funds)}, the industry-typical cover of about 1.8 times, is shown as a reference point (${pct(ref.share_covered, 1)}).` : ""}`
           : `Even ${randM(L[L.length - 1].own_funds)} does not reach 95%.`}{" "}
-        Every point is a full run; the line between them is drawn, not modelled. These results are final, on the v1 mortality model.
+        {hit && below && below.stresses["S1 Rates fall"] < 1 && hit.stresses["S1 Rates fall"] >= 1
+          ? `At ${randM(below.own_funds)} a fall in interest rates still takes cover below 100% (${coverPct(below.stresses["S1 Rates fall"])}); at ${randM(hit.own_funds)} it clears (${coverPct(hit.stresses["S1 Rates fall"])}), so that is roughly where the rate risk stops binding. `
+          : ""}
+        Every point is a full run; the line between them is drawn, not modelled. These results are final, on the original mortality model (v1).
       </p>
       {ref && (
         <p className="note caveat">
-          The futures simulate interest rates and inflation; longevity enters only through the named shocks, and because v1's forecast ranges are lower bounds
+          The futures simulate interest rates and inflation; longevity enters only through the named shocks, and because that model's forecast ranges are lower bounds
           (it failed its calibration test), the true longevity risk may be larger than those shocks. {randM(ref.own_funds)} clearing {cleared} of {names.length}{" "}
           disasters should be read in that light.
         </p>

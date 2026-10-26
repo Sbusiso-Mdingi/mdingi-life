@@ -807,6 +807,8 @@ h3.serif {
   display: flex;
   flex-direction: column;
   gap: 6px;
+  min-width: 0;
+  max-width: 100%;
 }
 .metrics {
   display: grid;
@@ -1033,6 +1035,12 @@ tr.total td {
 }
 .table-wrap {
   overflow-x: auto;
+  /* Scroll shadows: an edge darkens while more columns lie beyond it, and the covers slide over it at either end. */
+  background:
+    linear-gradient(to right, var(--background) 30%, transparent) left / 32px 100% no-repeat local,
+    linear-gradient(to left, var(--background) 30%, transparent) right / 32px 100% no-repeat local,
+    radial-gradient(farthest-side at 0 50%, rgba(0, 0, 0, 0.16), transparent) left / 12px 100% no-repeat scroll,
+    radial-gradient(farthest-side at 100% 50%, rgba(0, 0, 0, 0.16), transparent) right / 12px 100% no-repeat scroll;
 }
 .table-view {
   margin-top: 14px;

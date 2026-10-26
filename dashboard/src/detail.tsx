@@ -129,7 +129,7 @@ export function FanPanel({ r }: { r: Research }) {
       <div className="panel-head">
         <div>
           <p className="eyebrow">
-            Forecast · v1 mortality model, {sameModel ? MODEL_NAMES[name] : "chosen model by sex"}, fitted {WINDOW_START[window] ?? 1997} to {jump}
+            Forecast · original mortality model (v1), {sameModel ? MODEL_NAMES[name] : "chosen model by sex"}, fitted {WINDOW_START[window] ?? 1997} to {jump}
           </p>
           <h2 className="serif">How long 65-year-olds are expected to live, to {lastYear}</h2>
         </div>
@@ -158,7 +158,7 @@ export function FanPanel({ r }: { r: Research }) {
         By {lastYear} the median is {f1(end("Male", "median"))} years for men and {f1(end("Female", "median"))} for women, with 95% bands of{" "}
         {f1(end("Male", "lo"))} to {f1(end("Male", "hi"))} and {f1(end("Female", "lo"))} to {f1(end("Female", "hi"))}. The bands come from 5,000
         simulated paths over 500 bootstrap refits.
-        {r.source === "statssa" ? " Observed life expectancy here comes from registered deaths, so it sits above WPP's life tables wherever deaths go unregistered." : ""}
+        {r.source === "statssa" ? " Observed life expectancy here comes from registered deaths, so it sits above the UN's life tables wherever deaths go unregistered." : ""}
         {SEXES.some((s) => below(s).length > 0)
           ? ` Covid years fell below the band (men: ${below("Male").join(", ") || "none"}; women: ${below("Female").join(", ") || "none"}): a pandemic is not something the model was asked to expect.`
           : ""}
@@ -579,7 +579,7 @@ export function CurvePanel({ v }: { v: V2 }) {
   const c = v.curves[kind];
   const ys = view === "zero" ? c.zero : c.forwards;
   const series: Series[] = [
-    { key: "LI", label: "LI zero curve", color: CURVE_COLOR.LI, xs: c.years, ys: ys.LI },
+    { key: "LI", label: "Linear zero curve", color: CURVE_COLOR.LI, xs: c.years, ys: ys.LI },
     { key: "NS", label: "Nelson-Siegel", color: CURVE_COLOR.NS, xs: c.years, ys: ys.NS, dash: true },
   ];
   const points: Points[] = view === "zero" ? [{ key: "bonds", label: "Clearing yield", color: "var(--foreground)", xs: c.bonds.map((b) => b.maturity), ys: c.bonds.map((b) => b.yield) }] : [];
@@ -613,7 +613,7 @@ export function CurvePanel({ v }: { v: V2 }) {
       </div>
       <Legend
         items={[
-          { label: "LI zero curve (chosen)", color: CURVE_COLOR.LI },
+          { label: "Linear zero curve (chosen)", color: CURVE_COLOR.LI },
           { label: "Nelson-Siegel", color: CURVE_COLOR.NS, kind: "dash" },
           ...(view === "zero" ? [{ label: "Bond clearing yields", color: "var(--foreground)", kind: "dot" as const }] : []),
         ]}
@@ -629,8 +629,8 @@ export function CurvePanel({ v }: { v: V2 }) {
       />
       <p className="note">
         {view === "zero"
-          ? `Zero rates at semi-annual compounding, beside each bond's clearing yield at its final redemption. The LI zero curve reprices all ${c.bonds.length} bonds exactly; Nelson-Siegel is a smooth fit through them.`
-          : `The rate for each single year ahead. The LI zero curve's forwards are constant between bonds and held flat beyond the longest, here at ${pct(tail, 2)}.`}{" "}
+          ? `Zero rates at semi-annual compounding, beside each bond's clearing yield at its final redemption. The linear zero curve reprices all ${c.bonds.length} bonds exactly; Nelson-Siegel is a smooth fit through them.`
+          : `The rate for each single year ahead. The linear zero curve's forwards are constant between bonds and held flat beyond the longest, here at ${pct(tail, 2)}.`}{" "}
         {kind === "fixed"
           ? `Its forwards are lumpy: bonds that mature close together, with yields that differ, need large swings between them to price exactly. ${pct(Math.max(...fl), 2)} beyond ${longest} years against Nelson-Siegel's ${pct(c.forwards.NS[c.forwards.NS.length - 1], 2)}.`
           : "Real forwards stay between about 3.5% and 4.6% out to the longest bond."}
@@ -658,9 +658,9 @@ export function CurvePanel({ v }: { v: V2 }) {
           <thead>
             <tr>
               <th className="num">Year</th>
-              <th className="num">LI zero</th>
+              <th className="num">Linear zero</th>
               <th className="num">NS zero</th>
-              <th className="num">LI forward</th>
+              <th className="num">Linear forward</th>
               <th className="num">NS forward</th>
             </tr>
           </thead>
@@ -689,7 +689,7 @@ export function CurveBacktest({ v }: { v: V2 }) {
   const b = v.by_year[kind];
   const series: Series[] = (["LI", "NS", "B0"] as const).map((k) => ({
     key: k,
-    label: k === "B0" ? "Last yield (B0)" : k === "LI" ? "LI (chosen)" : "Nelson-Siegel",
+    label: k === "B0" ? "Last yield (B0)" : k === "LI" ? "Linear (chosen)" : "Nelson-Siegel",
     color: CURVE_COLOR[k],
     xs: b.years,
     ys: b[k],
@@ -729,6 +729,7 @@ export function CurveBacktest({ v }: { v: V2 }) {
     </tr>
   );
   const cols = ["LI", "NS", "NSS", "B0"];
+  const CURVE_NAME: Record<string, string> = { LI: "Linear", NS: "Nelson-Siegel", NSS: "Nelson-Siegel-Svensson", B0: "Last yield" };
   return (
     <section className="panel" id="curve-backtest">
       <div className="panel-head">
@@ -763,7 +764,7 @@ export function CurveBacktest({ v }: { v: V2 }) {
       <YearChart label={`${KIND_LABEL[kind]} bonds: prediction error by year and method`} series={series} fmt={(x) => `${num(x, 0)}bp`} height={260} notes={[{ x0: 2020, label: "Covid sell-off, March to May 2020", short: "Covid", row: 0, anchor: "start" }]} />
       <p className="note">
         The three lines move together: what is hard to predict is the market, not the curve. Nelson-Siegel would have been {bp(rm(va[kind], "LI")! - rm(va[kind], "NS")!)} better
-        than LI over 2018 to 2026, but the design years preferred LI and the choice stands as made.
+        than the linear curve over 2018 to 2026, but the design years preferred the linear curve and the choice stands as made.
       </p>
       <TableView>
         <table>
@@ -773,7 +774,7 @@ export function CurveBacktest({ v }: { v: V2 }) {
               <th className="num">Auctions</th>
               {cols.map((k) => (
                 <th key={k} className="num">
-                  {k}
+                  {CURVE_NAME[k] ?? k}
                 </th>
               ))}
             </tr>
@@ -859,12 +860,12 @@ export function CurvePrices({ v, r }: { v: V2; r: Research }) {
               <th>Sex</th>
               <th className="num">Age</th>
               <th className="num">Flat 2% / 4% / 6%</th>
-              <th className="num">Inflation-linked, LI</th>
+              <th className="num">Inflation-linked, linear curve</th>
               <th className="num">Implied</th>
-              <th className="num">NS</th>
-              <th className="num">Level, LI</th>
+              <th className="num">Nelson-Siegel</th>
+              <th className="num">Level, linear curve</th>
               <th className="num">Implied</th>
-              <th className="num">NS</th>
+              <th className="num">Nelson-Siegel</th>
             </tr>
           </thead>
           <tbody>
@@ -916,7 +917,7 @@ export function Matching({ v }: { v: V2 }) {
     <section className="panel" id="match">
       <div className="panel-head">
         <div>
-          <p className="eyebrow">Matching · inflation-linked annuity at 65, factor 0.7, real LI zero curve</p>
+          <p className="eyebrow">Matching · inflation-linked annuity at 65, factor 0.7, real linear zero curve</p>
           <h2 className="serif">Two bonds match the duration, not the shape</h2>
         </div>
         <Segmented label="Sex" value={sex} onChange={setSex} options={SEXES.map((s) => ({ id: s, label: SEX_LABEL[s] }))} />
@@ -1070,8 +1071,8 @@ export function BalanceSheet({ v }: { v: V3 }) {
   const ilb = Object.keys(m.matching.real.bonds).join(", ");
   const fixed = Object.keys(m.matching.nominal.bonds).join(", ");
   const sheet: [string, number, string, number][] = [
-    [`Inflation-linked bonds (${ilb})`, m.matching.real.liability.value, "BEL, annuities", m.bel.annuities],
-    [`Fixed-rate bonds (${fixed})`, m.matching.nominal.liability.value, "BEL, funeral", m.bel.funeral],
+    [`Inflation-linked bonds (${ilb})`, m.matching.real.liability.value, "Best estimate owed, annuities", m.bel.annuities],
+    [`Fixed-rate bonds (${fixed})`, m.matching.nominal.liability.value, "Best estimate owed, funeral", m.bel.funeral],
     ["182-day bill", m.assets.bill, "Risk margin", m.risk_margin],
     ["", NaN, "Own funds (Tier 1)", m.own_funds],
   ];
@@ -1124,7 +1125,7 @@ export function BalanceSheet({ v }: { v: V3 }) {
       </div>
       <p className="note">
         Expected funeral premiums ({rand(m.bel_parts.premiums)}) exceed claims ({rand(m.bel_parts.claims)}) plus expenses ({rand(m.bel_parts.fun_expenses)}), so the funeral
-        BEL is negative. The risk margin is 6% a year of the life and operational SCR as the book runs off. Expense inflation is the 30-year breakeven, {pct(m.inflation, 2)}.
+        best estimate is negative. The risk margin is 6% a year of the life and operational capital requirement as the book runs off. Expense inflation is the 30-year breakeven, {pct(m.inflation, 2)}.
       </p>
       <p className="eyebrow" style={{ margin: "22px 0 8px" }}>
         Sensitivities
@@ -1134,7 +1135,7 @@ export function BalanceSheet({ v }: { v: V3 }) {
           <thead>
             <tr>
               <th>Basis</th>
-              <th className="num">BEL</th>
+              <th className="num">Best estimate</th>
               <th className="num">Risk margin</th>
               <th className="num">SCR</th>
               <th className="num">Cover</th>

@@ -64,8 +64,8 @@ Realised inflation (the one-year breakeven at each year's start) is 4.8% in year
 | S1 Rates fall | 0.68 | 0.92 | 1.10 | 1.26 | 1.42 | 1.57 | R149.2m | Fail |
 | S2 Longevity | 0.21 | 0.27 | 0.31 | 0.36 | 0.41 | 0.47 | R349.0m | Fail |
 | S3 Pandemic year | 1.15 | 1.34 | 1.46 | 1.58 | 1.72 | 1.85 | nil | Pass |
-| S4 Lapse wave | 1.15 | 1.23 | 1.35 | 1.46 | 1.59 | 1.71 | nil | Pass |
-| S5 All at once | 0.67 | 1.02 | 1.20 | 1.37 | 1.54 | 1.69 | R152.3m | Fail |
+| S4 Lapse wave | 1.14 | 1.23 | 1.35 | 1.46 | 1.59 | 1.71 | nil | Pass |
+| S5 All at once | 0.67 | 1.01 | 1.20 | 1.37 | 1.54 | 1.69 | R152.3m | Fail |
 
 The worst year-end is t = 0 in every stress, as each is recognised at once.
 
@@ -131,7 +131,7 @@ Extra capital is invested in the same mix as today's assets: the key-rate matche
 
 | Starting capital | k | SCR | Cover, t = 0 | Covered throughout | S1 | S2 | S3 | S4 | S5 |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| R400m (v4, not rerun) | 1 | R348.2m | 1.15 | 60.1% | 0.68 | 0.21 | 1.15 | 1.15 | 0.67 |
+| R400m (v4, not rerun) | 1 | R348.2m | 1.15 | 60.1% | 0.68 | 0.21 | 1.15 | 1.14 | 0.67 |
 | R500m | 1.0227 | R344.5m | 1.45 | 89.9% | 0.93 | 0.45 | 1.45 | 1.46 | 0.92 |
 | R600m | 1.0454 | R342.4m | 1.75 | 97.7% | 1.18 | 0.70 | 1.75 | 1.76 | 1.17 |
 | R627m (about 1.8 × SCR) | 1.0515 | R342.1m | 1.83 | 98.7% | 1.24 | 0.77 | 1.83 | 1.84 | 1.24 |
@@ -140,7 +140,8 @@ Extra capital is invested in the same mix as today's assets: the key-rate matche
 
 S1 to S5 are the lowest cover at any year-end under each stress.
 
-- **The 95% crossing lies between R500 million (89.9%) and R627 million (98.7%),** with R627 million, the industry-typical cover, as the upper reference point. No levels were run in between to narrow it.
+- **The 95% crossing lies between R500 million (89.9%) and R600 million (97.7%),** the two completed runs either side of it. The precision was fixed before the R500 million result was seen, and no further levels were run to narrow it. R627 million (98.7%), the industry-typical cover, is kept as a reference point.
+- *Reporting change, 26 October 2026, after every level's result was seen:* the rule at `55fbcb9` named R627 million as the upper point of the interval. It is reported against R600 million instead, because R600 million is a completed run above 95% and gives the narrower interval the runs support. No result changes.
 - **The SCR moves little.** It dips to R342 million at R600 to R627 million, then rises to R364 million at R1,000 million as the larger bond holdings add to the interest-rate stress losses.
 - **Longevity is the last stress to clear.** S1, S3, S4 and S5 stay above 1.0 from R600 million. S2 does not until somewhere between R627 million (0.77) and R800 million (1.23). Capital that makes the scenarios safe still leaves the company exposed to pensioners living longer.
 
