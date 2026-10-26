@@ -507,7 +507,7 @@ export function Quote({ r }: { r: Research }) {
         <p className="note">
           The price depends on how long you will live, and nobody knows that for sure. I forecast it from Stats SA death records and simulate thousands of
           possible futures; the bar is the middle 95% of them. Women live longer, so their pensions cost more. Men's prices use the{" "}
-          {PRICED_ON.Male} mortality model and women's the {PRICED_ON.Female} model. A revision is under way; until it passes its tests, v1 prices both.
+          {PRICED_ON.Male} mortality model and women's the {PRICED_ON.Female} model. Three revisions (v1.1 to v1.3) were tested and none passed, so v1 prices both, and its ranges are lower bounds.
         </p>
         <LowerBound />
         <div className="callout">
@@ -1183,6 +1183,16 @@ export function Built({ r }: { r: Research }) {
               The frozen three-factor rate model failed its own check. The two-factor version was committed at <Commit hash="ce1ad56" when="12:08" />, and the
               projection results at <Commit hash="d50d59b" when="13:55" />. Its fixed-rate check, 1.32 against 1.33, was first seen in that run. The frozen model's
               results are reported too.
+            </li>
+            <li>
+              <strong>Mortality revisions (v1.1 to v1.3), none adopted</strong>
+              Three revisions, each planned and frozen before it ran: completeness scaling, overdispersion and an average of models (v1.1); windows by sex
+              (v1.2); a cohort term smoothed over birth years (v1.3, <Frozen hash="e4e524b44d96" when="26 Oct 2026" />). The 2017 to 2019 hold-out guided all
+              three, so v1.3 added a second backtest origin. None passed both its tests and a check that women's pensions cost more than men's and that life
+              expectancy rises. v1.3 was the last. Both sexes stay on v1.{" "}
+              <a href={doc("RESULTS_v1.3.md")} target="_blank" rel="noreferrer">
+                Results
+              </a>
             </li>
             <li>
               <strong>Starting capital (v4), exploratory</strong>
