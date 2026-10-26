@@ -51,11 +51,11 @@ The published results run on Stats SA registered deaths. The DataFirst unit reco
 .venv/bin/python -m research.mcd           # deaths by year, sex and age
 .venv/bin/python -m research.exposure      # WPP population, checked against Stats SA P0302
 .venv/bin/python -m research.completeness  # registered vs WPP deaths, and the scaled deaths
-S="--source statssa --deaths data/raw/statssa/mcd_deaths.csv --population data/raw/statssa/wpp_population.csv"
-.venv/bin/python -m research.backtest ${=S}
-.venv/bin/python -m research.annuities ${=S}
-.venv/bin/python -m research.export ${=S}
+.venv/bin/python -m research.backtest --source statssa \
+  --deaths data/raw/statssa/mcd_deaths.csv --population data/raw/statssa/wpp_population.csv
 ```
+
+`research.annuities` and `research.export` take the same three flags.
 
 Without `--source` the scripts run on UN WPP 2024, the comparison run.
 
