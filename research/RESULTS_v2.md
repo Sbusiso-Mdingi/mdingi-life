@@ -91,7 +91,7 @@ On the real LI zero curve, adjustment 0.7. DV01 is the value lost for a 1bp rise
 | Matching bonds (duration) | I2038 (9.9), I2043 (11.4) | I2043 (11.4), I2046 (14.6) |
 | Portfolio DV01 at 5 / 10 / 20 / 30 | 12 / 83 / 47 / 0 | 13 / 47 / 153 / 0 |
 
-Two bonds match the annuity's value and duration, but not its shape. The annuity's payments run to age 120, and a third to a half of its interest-rate risk sits at the 20- and 30-year key rates. The portfolio has nothing at 30 years and piles its risk at 10 years (men) or 20 years (women). A parallel move leaves the book matched. A steepening of the real curve beyond 20 years does not: the annuity's value moves and the portfolio's does not. For women the 30-year mismatch is 93 per R10,000 a year per basis point. Closing it needs I2050 and I2058, the bonds whose durations are longest, which a two-bond, duration-only match does not reach. That is v3's starting point.
+Two bonds match the annuity's value and duration, but not its shape. The annuity's payments run to age 120, and a third to a half of its interest-rate risk sits at the 20- and 30-year key rates. The portfolio has nothing at 30 years and piles its risk at 10 years (men) or 20 years (women). A parallel move leaves the book matched. A steepening of the real curve beyond 20 years does not: the annuity's value moves and the portfolio's does not. For women the 30-year mismatch is 93 per R10,000 a year per basis point. Closing it needs I2050 and I2058, the bonds whose durations are longest, which a two-bond, duration-only match does not reach. That is v3's starting point: under SAM's interest-rate shocks the same gap costs R193 million of capital ([RESULTS_v3.md](RESULTS_v3.md#scr-r-million)).
 
 ## Notes
 

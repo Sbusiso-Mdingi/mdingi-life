@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { api, type Kind, type Price, type Quote, type Research, type Rmse, type Sex, type V2 } from "./api";
+import { api, type Kind, type Price, type Quote, type Research, type Rmse, type Sex, type V2, type V3 } from "./api";
 import { BarChart, IntervalChart, YearChart, type Band, type BarGroup, type Interval, type Points, type Series } from "./charts";
-import { SEX_LABEL, num, pct, thousands } from "./format";
+import { SEX_LABEL, millions, num, pct, thousands } from "./format";
 
 const SEXES: Sex[] = ["Male", "Female"];
 const COLOR: Record<Sex, string> = { Male: "var(--men)", Female: "var(--women)" };
@@ -120,7 +120,7 @@ export function App({ embedded }: { embedded: boolean }) {
     <div className="preview">
       <header className="head" id="hero">
         <div>
-          <p className="eyebrow">Live preview · Mdingi Life · v1 Liabilities{r.v2 ? " · v2 Assets" : ""}</p>
+          <p className="eyebrow">Live preview · Mdingi Life · v1 Liabilities{r.v2 ? " · v2 Assets" : ""}{r.v3 ? " · v3 Balance sheet" : ""}</p>
           <h1 className="serif">
             Mdingi Life is a fictional South African life insurer. <em>v1 prices its annuities.</em>
           </h1>
@@ -175,6 +175,19 @@ export function App({ embedded }: { embedded: boolean }) {
           <CurveBacktest v={r.v2} />
           <CurvePrices v={r.v2} r={r} />
           <Matching v={r.v2} />
+        </>
+      )}
+      {r.v3 && (
+        <>
+          <header className="part" id="v3">
+            <p className="eyebrow">v3 Balance sheet · protocol {r.v3.protocol}</p>
+            <h2 className="serif">
+              The SAM standard formula on an invented book. <em>How much capital Mdingi Life needs, and why.</em>
+            </h2>
+          </header>
+          <Solvency v={r.v3} />
+          <Interest v={r.v3} />
+          <BalanceSheet v={r.v3} />
         </>
       )}
       <Method r={r} />
@@ -1337,6 +1350,279 @@ function Matching({ v }: { v: V2 }) {
           </tbody>
         </table>
       </TableView>
+    </section>
+  );
+}
+
+// v3 Balance sheet --------------------------------------------------------------------------------------------------
+
+const rand = (v: number) => `R${millions(v)}m`;
+const randBig = (v: number) => `R${millions(v, 0)}m`;
+const v3doc = (f: string) => `${REPO}/blob/main/research/${f}`;
+
+function Solvency({ v }: { v: V3 }) {
+  const m = v.main;
+  const risks = [
+    { key: "longevity", label: "Longevity", value: m.life.longevity },
+    { key: "real", label: "Real rates", value: m.interest.real },
+    { key: "nominal", label: "Nominal rates", value: m.interest.nominal },
+    { key: "expense", label: "Expense", value: m.life.expense },
+    { key: "lapse", label: "Lapse", value: m.life.lapse },
+    { key: "op", label: "Operational", value: m.op },
+    { key: "mortality", label: "Mortality", value: m.life.mortality },
+    { key: "cat", label: "Catastrophe", value: m.life.catastrophe },
+  ];
+  const groups: BarGroup[] = risks.map((x) => ({ key: x.key, label: x.label, values: [{ key: "c", label: "Standalone charge", color: "var(--s1)", value: x.value / 1e6 }] }));
+  const sum = risks.reduce((a, x) => a + (x.key === "op" ? 0 : x.value), 0);
+  const k1 = v.checks.K1, k3 = v.checks.K3, k4 = v.checks.K4;
+  const target = v.checks.K5.industry_median;
+  const tests = [
+    { id: "K1", claim: "A plain monthly loop agrees with the engine", pass: k1.pass, plain: `Worst relative difference ${k1.worst_relative.toExponential(1)} across ${k1.scenarios} scenarios, against a limit of 1e-8.` },
+    { id: "K3", claim: "Matching cuts the interest charge below a quarter", pass: k3.pass, plain: `${rand(k3.matched)} matched against ${rand(k3.unmatched)} unmatched: a ratio of ${f2(k3.ratio)}, under 0.25 but not by much.` },
+    { id: "K4", claim: "Longevity is the largest life risk", pass: k4.pass, plain: `${rand(m.life.longevity)} of a ${rand(m.scr_life)} diversified life SCR.` },
+  ];
+  return (
+    <section className="panel" id="scr">
+      <div className="panel-head">
+        <div>
+          <p className="eyebrow">SCR · standard formula, FSI 4 · valuation date {longDate(v.valuation_date)}</p>
+          <h2 className="serif">R400 million does not cover the SCR. Longevity drives it.</h2>
+        </div>
+      </div>
+      <div className="metrics">
+        <Metric className="sans" value={f2(m.cover)} label="Cover ratio" sub={`Own funds ${randBig(m.own_funds)} over SCR`} />
+        <Metric className="sans" value={rand(m.scr)} label="SCR" sub={`BSCR ${rand(m.bscr)} plus operational ${rand(m.op)}`} />
+        <Metric className="sans" value={randBig(m.capital_for[String(target)])} label={`Own funds for cover of ${target}`} sub="The life industry's median, 2025 (SARB FSR)" />
+      </div>
+      <p className="eyebrow" style={{ margin: "22px 0 8px" }}>
+        Standalone charge by risk, R million
+      </p>
+      <BarChart label="Standalone SCR charge by risk, R million" groups={groups} fmt={(x) => num(x, 0)} />
+      <p className="note">
+        Before operational risk, the standalone charges sum to {rand(sum)}. Correlation brings them down to {rand(m.bscr)} before operational risk. The annuities' longevity charge is {pct(m.life.longevity / sum, 0)} of
+        the sum. Next is the real-rate charge left over after matching, then expenses. The funeral book adds little: the business is profitable, so its biggest risk is losing
+        40% of it at once (mass lapse). Tax is ignored, which overstates the SCR.{" "}
+        <a href={v3doc("RESULTS_v3.md")} target="_blank" rel="noreferrer">
+          Results
+        </a>{" "}
+        ·{" "}
+        <a href={v3doc("PROTOCOL_v3.md")} target="_blank" rel="noreferrer">
+          Protocol
+        </a>
+      </p>
+      <ul className="tests">
+        {tests.map((x) => (
+          <li key={x.id}>
+            <div className="test-head">
+              <span className="mono small">{x.id}</span>
+              <strong>{x.claim}</strong>
+              <Verdict pass={x.pass} />
+            </div>
+            <p className="plain" style={{ marginLeft: 34 }}>
+              {x.plain}
+            </p>
+          </li>
+        ))}
+      </ul>
+      <TableView>
+        <table>
+          <thead>
+            <tr>
+              <th>Risk</th>
+              <th className="num">R million</th>
+            </tr>
+          </thead>
+          <tbody>
+            {[
+              ["Mortality", m.life.mortality],
+              ["Longevity", m.life.longevity],
+              ["Lapse", m.life.lapse],
+              ["Expense", m.life.expense],
+              ["Catastrophe", m.life.catastrophe],
+              ["Life, diversified", m.scr_life],
+              ["Interest, real", m.interest.real],
+              ["Interest, nominal", m.interest.nominal],
+              ["Market, diversified", m.market],
+              ["BSCR", m.bscr],
+              ["Operational", m.op],
+              ["SCR", m.scr],
+            ].map(([k, x]) => (
+              <tr key={k as string}>
+                <td>{k}</td>
+                <td className="num">{millions(x as number)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </TableView>
+    </section>
+  );
+}
+
+function Interest({ v }: { v: V3 }) {
+  const m = v.main, u = v.unmatched;
+  const rows = [
+    { key: "real", label: "Real rates", a: m.interest.real, b: u.interest.real },
+    { key: "nominal", label: "Nominal rates", a: m.interest.nominal, b: u.interest.nominal },
+    { key: "combined", label: "Interest, diversified", a: m.interest.combined, b: u.interest.combined },
+  ];
+  const groups: BarGroup[] = rows.map((x) => ({
+    key: x.key,
+    label: x.label,
+    values: [
+      { key: "m", label: "Matched", color: "var(--s1)", value: x.a / 1e6 },
+      { key: "u", label: "Unmatched", color: "var(--s2)", value: x.b / 1e6 },
+    ],
+  }));
+  const real = m.matching.real;
+  const bonds = Object.entries(real.bonds);
+  return (
+    <section className="panel" id="v3-match">
+      <div className="panel-head">
+        <div>
+          <p className="eyebrow">Interest-rate risk · FSI 4.1 §5 · relative shocks to each curve, the other curve held</p>
+          <h2 className="serif">Matching removes most of the interest charge, not all of it</h2>
+        </div>
+      </div>
+      <div className="metrics">
+        <Metric className="sans" value={f2(m.cover)} label="Cover, matched" sub={`SCR ${rand(m.scr)}`} />
+        <Metric className="sans" value={f2(u.cover)} label="Cover, unmatched" sub={`SCR ${rand(u.scr)}, everything in a 182-day bill`} />
+        <Metric className="sans" value={bonds.map(([b]) => b).join(" + ")} label="Inflation-linked match" sub={`${bonds.map(([b, x]) => `${b} ${num(x.duration, 1)}y`).join(", ")} against ${num(real.liability.duration, 1)}y`} />
+      </div>
+      <Legend
+        items={[
+          { label: "Matched", color: "var(--s1)" },
+          { label: "Unmatched", color: "var(--s2)" },
+        ]}
+      />
+      <BarChart label="Interest-rate SCR, matched and unmatched, R million" groups={groups} fmt={(x) => num(x, 0)} />
+      <p className="note">
+        The bonds match each annuity type's value and duration, but SAM's shocks are relative and large. Real rates fall about 2.4 points at 10 years and 2.75 points beyond 30. The
+        annuities pay out to age 120 and gain more from a fall that size than two bonds near 10 years do. Real rates rising gains {rand(-m.rate_losses["real up"])}, which
+        confirms it. A falling real curve also raises expense inflation, and no bond hedges that. This is the 30-year gap that v2 found, at SAM's size of shock.
+      </p>
+      <TableView>
+        <table>
+          <thead>
+            <tr>
+              <th>Shock</th>
+              <th className="num">Loss, matched (R million)</th>
+            </tr>
+          </thead>
+          <tbody>
+            {Object.entries(m.rate_losses).map(([k, x]) => (
+              <tr key={k}>
+                <td>{k[0].toUpperCase() + k.slice(1)}</td>
+                <td className="num">{millions(x)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </TableView>
+    </section>
+  );
+}
+
+const SENS_LABEL: Record<string, string> = {
+  "funeral 0.8": "Funeral mortality ×0.8",
+  "funeral 1.2": "Funeral mortality ×1.2",
+  "annuitant 0.6": "Annuitant factor 0.6",
+  "annuitant 0.8": "Annuitant factor 0.8",
+  "NS curves": "Nelson-Siegel curves",
+};
+
+function BalanceSheet({ v }: { v: V3 }) {
+  const m = v.main;
+  const ilb = Object.keys(m.matching.real.bonds).join(", ");
+  const fixed = Object.keys(m.matching.nominal.bonds).join(", ");
+  const sheet: [string, number, string, number][] = [
+    [`Inflation-linked bonds (${ilb})`, m.matching.real.liability.value, "BEL, annuities", m.bel.annuities],
+    [`Fixed-rate bonds (${fixed})`, m.matching.nominal.liability.value, "BEL, funeral", m.bel.funeral],
+    ["182-day bill", m.assets.bill, "Risk margin", m.risk_margin],
+    ["", NaN, "Own funds (Tier 1)", m.own_funds],
+  ];
+  const sens = [["main", "Main basis", m] as const, ...Object.entries(v.sensitivities).map(([k, x]) => [k, SENS_LABEL[k] ?? k, x] as const)];
+  return (
+    <section className="panel" id="sheet">
+      <div className="panel-head">
+        <div>
+          <p className="eyebrow">
+            Balance sheet · {thousands(m.policies.annuities)} annuities and {thousands(m.policies.funeral)} funeral policies, invented · R million
+          </p>
+          <h2 className="serif">The funeral book is an asset. The annuities are almost everything else.</h2>
+        </div>
+      </div>
+      <div className="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Assets</th>
+              <th className="num">R million</th>
+              <th>Liabilities and own funds</th>
+              <th className="num">R million</th>
+            </tr>
+          </thead>
+          <tbody>
+            {sheet.map(([a, x, l, y]) => (
+              <tr key={l}>
+                <td>{a}</td>
+                <td className="num">{Number.isNaN(x) ? "" : millions(x)}</td>
+                <td>{l}</td>
+                <td className="num">{millions(y)}</td>
+              </tr>
+            ))}
+            <tr>
+              <td>
+                <strong>Total</strong>
+              </td>
+              <td className="num">
+                <strong>{millions(m.assets.total)}</strong>
+              </td>
+              <td>
+                <strong>Total</strong>
+              </td>
+              <td className="num">
+                <strong>{millions(m.assets.total)}</strong>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p className="note">
+        Expected funeral premiums ({rand(m.bel_parts.premiums)}) exceed claims ({rand(m.bel_parts.claims)}) plus expenses ({rand(m.bel_parts.fun_expenses)}), so the funeral
+        BEL is negative. The risk margin is 6% a year of the life and operational SCR as the book runs off. Expense inflation is the 30-year breakeven, {pct(m.inflation, 2)}.
+      </p>
+      <p className="eyebrow" style={{ margin: "22px 0 8px" }}>
+        Sensitivities
+      </p>
+      <div className="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Basis</th>
+              <th className="num">BEL</th>
+              <th className="num">Risk margin</th>
+              <th className="num">SCR</th>
+              <th className="num">Cover</th>
+            </tr>
+          </thead>
+          <tbody>
+            {sens.map(([k, label, x]) => (
+              <tr key={k}>
+                <td>{label}</td>
+                <td className="num">{millions(x.bel.total)}</td>
+                <td className="num">{millions(x.risk_margin)}</td>
+                <td className="num">{millions(x.scr)}</td>
+                <td className="num">{f2(x.cover)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p className="note">
+        The annuitant factor moves the result most. The funeral basis barely matters: lighter funeral mortality makes the book more profitable, which raises the mass-lapse charge
+        about as much as it lowers the mortality charge.
+      </p>
     </section>
   );
 }

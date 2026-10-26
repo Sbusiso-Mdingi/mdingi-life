@@ -11,6 +11,9 @@ If annuities_v2.json exists it bundles v2 as well, from the saved results only (
 and validation scores, the validation error by year, the valuation-date curves, the annuity prices on them and the
 matching portfolio.
 
+If balance_v3.json exists it bundles v3 the same way: the balance sheet, the SCR by risk, matched and unmatched, the
+sensitivities, the checks and the funeral table.
+
 Refuses to run until the protocol is frozen.
 """
 from __future__ import annotations
@@ -89,6 +92,33 @@ def v2() -> dict | None:
             "data": {k: val["data"][k] for k in ("usable", "screened")}, "by_year": by_year, "curves": curves, **sexes}
 
 
+def v3() -> dict | None:
+    f = OUT / "balance_v3.json"
+    if not f.exists():
+        return None
+    b = json.loads(f.read_text())
+    sheet = lambda r: {k: r[k] for k in ("bel", "risk_margin", "scr_life", "market", "bscr", "scr", "cover", "own_funds",
+                                         "life", "interest", "inflation")} | {"op": r["op"]["charge"]}
+    m = b["main"]
+    tab = pd.read_csv(OUT / "funeral_table.csv")
+    k1 = b["checks"]["K1"]
+    return {"protocol": b["protocol"]["v3"], "valuation_date": b["valuation_date"], "curve_dates": b["curve_dates"],
+            "main": sheet(m) | {"bel_parts": m["bel_parts"], "lapse": m["lapse"], "rate_losses": m["rate_losses"],
+                                "op_detail": m["op"], "policies": m["policies"], "capital_for": m["capital_for"],
+                                "assets": {k: m["assets"][k] for k in ("total", "bill", "matched")},
+                                "matching": {k: {"liability": v["liability"], "bonds": {
+                                    c: {"duration": bd["duration"], "value": v["units"][c] * bd["value"]}
+                                    for c, bd in v["bonds"].items()}} for k, v in m["assets"]["matching"].items()},
+                                "scr_ru": m["scr_ru"]},
+            "unmatched": sheet(b["unmatched"]),
+            "sensitivities": {k: sheet(r) for k, r in b["sensitivities"].items()},
+            "checks": {"K1": {"worst_relative": k1["worst_relative"], "pass": k1["pass"], "cells": k1["cells"],
+                              "scenarios": len(k1["scenarios"])},
+                       **{k: b["checks"][k] for k in ("K3", "K4", "K5")}},
+            "funeral_table": {"ages": sorted(tab["age"].unique().tolist()),
+                              **{s: tab[tab["sex"] == s].sort_values("age")["mu"].round(6).tolist() for s in data.SEXES}}}
+
+
 def e65(log_m: np.ndarray, ages: np.ndarray) -> np.ndarray:
     """Period life expectancy at 65, constant force within each year of age, Kannisto above 89."""
     ages, full = kannisto.extend(log_m, ages)
@@ -149,6 +179,8 @@ def main() -> None:
         out["compare"] = compare()
     if (b := v2()) is not None:
         out["v2"] = b
+    if (b := v3()) is not None:
+        out["v3"] = b
     (data.ROOT / "data" / "research.json").write_text(json.dumps(out, default=float))
     print("wrote data/research.json")
 

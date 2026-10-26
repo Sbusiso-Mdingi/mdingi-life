@@ -42,6 +42,45 @@ export type V2 = {
   { model: string; jump_off: number; prices: V2Price[]; matching: { annuity: Risk; portfolio: { holdings_per_100_nominal: Record<string, number>; dv01: Record<string, number> }; bonds: Record<string, Risk> } }
 >;
 
+export type Sheet = {
+  bel: Record<"annuities" | "funeral" | "total", number>;
+  risk_margin: number;
+  scr_life: number;
+  market: number;
+  bscr: number;
+  scr: number;
+  cover: number;
+  own_funds: number;
+  op: number;
+  inflation: number;
+  life: Record<"mortality" | "longevity" | "lapse" | "expense" | "catastrophe", number>;
+  interest: Record<"nominal" | "real" | "combined", number>;
+};
+export type V3 = {
+  protocol: string;
+  valuation_date: string;
+  curve_dates: Record<"real" | "nominal", string>;
+  main: Sheet & {
+    bel_parts: Record<"income" | "ann_expenses" | "claims" | "premiums" | "fun_expenses", number>;
+    lapse: Record<"up" | "down" | "level" | "mass" | "combined", number>;
+    rate_losses: Record<string, number>;
+    op_detail: { earned_premiums: number; premiums: number; provisions: number; charge: number };
+    policies: Record<"annuities" | "funeral", number>;
+    capital_for: Record<string, number>;
+    assets: Record<"total" | "bill" | "matched", number>;
+    matching: Record<"real" | "nominal", { liability: Risk; bonds: Record<string, { duration: number; value: number }> }>;
+    scr_ru: { t0: number; annuity_weight: number; by_year: number[] };
+  };
+  unmatched: Sheet;
+  sensitivities: Record<string, Sheet>;
+  checks: {
+    K1: { worst_relative: number; pass: boolean; scenarios: number };
+    K3: { matched: number; unmatched: number; ratio: number; pass: boolean };
+    K4: { largest: string; pass: boolean };
+    K5: { cover: number; industry_median: number };
+  };
+};
+
 export type Research = {
   source: string;
   protocol: string;
@@ -55,6 +94,7 @@ export type Research = {
   history?: { years: number[]; e0: Record<Sex, number[]>; e65: Record<Sex, number[]> };
   compare?: { runs: Run[]; completeness: BySex; exposure: BySex };
   v2?: V2;
+  v3?: V3;
 };
 
 export type Quote = Price & { sex: Sex; model: string; jump_off: number; lower_bound: boolean };
