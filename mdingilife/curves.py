@@ -228,6 +228,36 @@ class LI(Curve):
         return float(np.interp(t[-1], self.mat, self.y))
 
 
+class Bootstrap(Curve):
+    """The zero curve behind LI: forwards constant between successive final redemptions, each set so that the
+    bond maturing at the segment's end prices exactly at its clearing yield. Flat before the first and beyond the
+    last node."""
+    name = "LI zero"
+
+    def __init__(self, nodes, fwd):
+        self.nodes, self.fwd = np.asarray(nodes, float), np.asarray(fwd, float)  # fwd[i] applies up to nodes[i]
+
+    def zero(self, t):
+        t = np.asarray(t, float)
+        edges = np.concatenate([[0.0], self.nodes])
+        cum = np.concatenate([[0.0], np.cumsum(self.fwd * np.diff(edges))])
+        i = np.clip(np.searchsorted(self.nodes, t), 0, len(self.fwd) - 1)
+        integral = cum[i] + self.fwd[i] * (t - edges[i])
+        return np.where(t > 0, integral / np.maximum(t, 1e-12), self.fwd[0])
+
+    @classmethod
+    def fit(cls, pts: list[Point]) -> "Bootstrap":
+        pts = sorted(pts, key=lambda q: q.maturity)
+        nodes, fwd = [], []
+        for q in pts:
+            nodes.append(q.maturity)
+            def err(f):
+                c = cls(nodes, fwd + [f])
+                return float(np.sum(q.cf * np.exp(-c.zero(q.t) * q.t))) - q.price
+            fwd.append(brentq(err, -0.5, 2.0))
+        return cls(nodes, fwd)
+
+
 MODELS = {"LI": LI, "NS": NS, "NSS": NSS}
 
 

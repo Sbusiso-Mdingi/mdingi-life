@@ -103,3 +103,13 @@ Its largest errors came from the parse, not the market. Most of the 2012–16 wo
 
 - **The fix, in `research/treasury.py`.** No auction cleared under 0.25%, so any clearing yield, best bid or worst bid under 0.25 is multiplied by 100. Five 2012 auctions labelled R2038 in the inflation-linked workbook are I2038 (the fixed-rate R2038 was first issued in 2024): a four-digit R code in an inflation-linked workbook is read as an I code.
 - Nothing else changes. The design period is run again on the corrected data and its choice of curves stands, whatever it is.
+
+### 26 October 2026: a zero curve for the linear choice
+
+Written after the corrected design run, which chose LI for both kinds, and before any validation run. The protocol prices the annuities and their risk on a zero curve, and LI is not one: it reads a bond's yield off a line through the window's yields.
+
+- **The zero curve behind LI.** On the valuation date, the window's bonds are sorted by maturity and a zero curve is bootstrapped through them: the forward rate is constant between one bond's final redemption and the next, set so that each bond's price at its clearing yield is matched exactly. Before the shortest bond, the forward is that of the first segment; beyond the longest, it is held flat as already set out above.
+- **Why this curve.** It uses the same information as LI, the window's clearing yields and nothing else, without a parametric shape the design period did not choose. Where two bonds mature less than a year apart, a short segment can carry an extreme forward, so the forwards are reported alongside the prices.
+- **Duration and key rates** are taken on this zero curve, as written. The matching portfolio is unchanged.
+- The backtest, the scores and the tests are unchanged: they score LI's yields.
+- **Reported, as a sensitivity:** prices on NS, the runner-up for both kinds.

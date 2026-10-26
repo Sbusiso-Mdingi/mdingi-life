@@ -103,3 +103,13 @@ def test_forwards_flat_beyond_the_last_maturity():
     assert f[5] == pytest.approx(z(6) - z(5), abs=1e-10)
     assert np.allclose(f[21:], f[25])
     assert f[25] == pytest.approx((z(20 + 1e-4) - z(20 - 1e-4)) / 2e-4, abs=1e-6)
+
+
+def test_bootstrap_reprices_every_bond_and_recovers_a_flat_curve():
+    pts = points(lambda t: c.ns(t, *TRUE_NS))
+    boot = c.Bootstrap.fit(pts)
+    assert max(abs(boot.bond_yield(q.t, q.cf) - q.y) for q in pts) < 1e-9
+    flat = c.Bootstrap.fit(points(lambda t: 0.09 + 0 * t))
+    assert np.allclose(flat.fwd, 0.09, atol=1e-6)
+    f = c.forwards(flat, flat.nodes[-1], 60)
+    assert np.allclose(f, 0.09, atol=1e-6)
