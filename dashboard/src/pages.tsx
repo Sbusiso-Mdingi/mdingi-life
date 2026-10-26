@@ -200,7 +200,7 @@ export function Overview({ r, go }: { r: Research; go: Go }) {
                       of starting capital, instead of {randM(levels[0].own_funds)}, is where the share of futures staying covered every year crosses 95%:{" "}
                       {pct(cross.lo.share_covered, 0)} at {randM(cross.lo.own_funds)}, {pct(cross.hi.share_covered, 0)} at {randM(cross.hi.own_funds)}. Even at{" "}
                       {randM(cross.hi.own_funds)}, longer-living pensioners take cover to {coverPct(cross.hi.stresses["S2 Longevity"])}. I added these runs
-                      after seeing the first result.
+                      after seeing the first result. They use the v1 mortality model.
                     </>
                   ) : (
                     <>
@@ -1181,7 +1181,8 @@ export function Built({ r }: { r: Research }) {
               <strong>Starting capital (v4), exploratory</strong>
               Added after seeing the first result. The levels and the rule for investing the extra were written at <Commit hash="28e4b67" when="14:51" />,
               before any level was run. After R600m to R1,000m had run, I stopped at R500m rather than narrowing to the nearest R25m, and report the crossing
-              as an interval (<Commit hash="55fbcb9" when="16:15" />, before the R500m result).
+              as an interval (<Commit hash="55fbcb9" when="16:15" />, before the R500m result). Every level used the same 1,000 futures, regenerated from
+              the same seed on the same calibration, and the same five disasters. Like every capital result on this site, it uses the v1 mortality model.
             </li>
           </ul>
         </div>
@@ -1606,7 +1607,8 @@ function CapitalCurve({ c }: { c: NonNullable<NonNullable<Research["v4"]>["capit
         {hit && below
           ? `The 95% target is crossed between ${randM(below.own_funds)} (${pct(below.share_covered, 1)}) and ${randM(hit.own_funds)} (${pct(hit.share_covered, 1)}), the industry-typical cover of about 1.8 times. I did not run points in between to narrow it.`
           : `Even ${randM(L[L.length - 1].own_funds)} does not reach 95%.`}{" "}
-        Every point is a full run; the line between them is drawn, not modelled.
+        Every point is a full run; the line between them is drawn, not modelled. All of it uses the v1 mortality model; it will be rerun once,
+        at R400m, R500m and R627m, when the mortality revision is final.
       </p>
       <div className="table-wrap">
         <table>

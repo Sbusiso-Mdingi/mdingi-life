@@ -4,7 +4,7 @@ Run on 26 October 2026 under `PROTOCOL_v1.2.md`, frozen at `1dc85fcda492`, on th
 
 ## The answer
 
-- **Men now pass all four tests.** With their own windows (post-peak for every model), the average is RH post-peak, at 100% weight. Validation deviance halves (1,529, against 3,409 in v1.1), the 95% intervals cover 93.3% of observed rates, and the annuity error at 65 averages 1.66%.
+- **Men now pass all four tests.** With their own windows (post-peak for every model), the average is RH post-peak, at 100% weight. Validation deviance halves (1,529, against 3,409 in v1.1), the 95% intervals cover 93.3% of observed rates, and the annuity error at 65 averages 1.66%. Two caveats belong with this. The 2017 to 2019 hold-out has now guided three versions, so it is no longer a clean test. And v1.2's windows were chosen after v1.1's design scores had been seen.
 - **Women are unchanged.** Their windows were already v1.1's (RH full). Q2 still fails, at 75.8%.
 - **Men's price at 65 goes back up** to 13.24 (v1.1 12.09, v1 13.53). Women stay at 13.18 (v1 16.05).
 - **The forecasts differ by sex, as the data asks.** Men improve steadily: e65 of 14.4 in 2020, 15.1 in 2030 and 18.1 in 2050. Women barely improve for a decade: 16.9, 16.7, then 17.3 in 2050. That follows from the women's full window, which spans the HIV-era rise and fall.
@@ -83,7 +83,7 @@ v1.1 reported the jump-off as fixed, because the forecast for 2020 sat close to 
 | Men (RH post-peak) | 14.00 | 14.12 | 14.29 | 14.38 |
 | Women (RH full) | 16.80 | 16.63 | 16.88 | 16.88 |
 
-With the period index frozen, moving one year along the cohort diagonals alone lifts e65 by 0.17 for men and 0.25 for women. Most of it comes from the oldest cohorts, seen in only three to five cells, whose estimated cohort effects are large and poorly identified (up to +0.63 for women). They leave the 50 to 89 age range in 2020. The anchor is an offset by age, so it cannot undo a shift that runs along cohorts. For women the cohort jump happened to land the forecast on the observed value; for men it overshoots it by 0.38.
+With the period index frozen, moving one year along the cohort diagonals alone lifts e65 by 0.17 for men and 0.25 for women. Most of it comes from the oldest cohorts, seen in only three to five cells, whose estimated cohort effects are large and poorly identified (up to +0.63 for women). They leave the 50 to 89 age range in 2020. *Corrected 26 October 2026: this explanation is wrong. The cohorts at ages 65 to 89 in 2019 (born 1930 to 1954) are seen in 14 to 23 cells each. Split by age, almost all of the jump comes from age 89, where the 1931 cohort replaces the 1930 cohort, and γ spikes at round birth years (1930, 1940). See `PROTOCOL_v1.3.md`, "Seen beforehand".* The anchor is an offset by age, so it cannot undo a shift that runs along cohorts. For women the cohort jump happened to land the forecast on the observed value; for men it overshoots it by 0.38.
 
 ## What it points to
 
@@ -91,4 +91,4 @@ With the period index frozen, moving one year along the cohort diagonals alone l
 - For **women**, the full-window RH still fails Q2. It forecasts almost no improvement for a decade, which makes women's price at 65 the same as men's.
 - Both problems point at RH's cohort term: poorly identified at the old end, and absorbing the noise that the dispersion estimate then misses (φ is 2 to 3 for RH, against 12 to 70 for the others).
 
-A next step would need its own frozen plan. The obvious candidate is a stricter rule for estimating cohorts (more than three cells, or smoothing γ over birth years). Measuring dispersion out of sample, and a weight rule that keeps more than one model, also remain open.
+A next step would need its own frozen plan. The obvious candidate is a stricter rule for estimating cohorts (more than three cells, or smoothing γ over birth years). *(After the correction above, only smoothing addresses the cause.)* Measuring dispersion out of sample, and a weight rule that keeps more than one model, also remain open.
