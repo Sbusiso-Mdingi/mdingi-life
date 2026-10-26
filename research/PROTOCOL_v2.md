@@ -82,3 +82,15 @@ Written before any curve was fitted, to settle two things the cleaning rule left
 - **The coupon dates** of each bond are taken from its final redemption date, stepping back six months at a time, because a South African government bond pays its last coupon on its redemption date. The schedules' coupon dates are checked against this and disagreements reported, not used.
 
 Reason: as frozen, a mistyped yield could stay in the LI and B0 windows and in the targets, where every model would be charged for it.
+
+### 26 October 2026: a 91-day window, and no NSS for inflation-linked bonds
+
+Written after the first design run and before any validation run. That run used the frozen 28-day window, and its design scores were seen: fixed-rate RMSE 44 (LI), 21 (NS) and 24 (NSS) basis points on the 476 auctions all three could price; inflation-linked, 13, 22 and 20 on 15 auctions. It chose NS for fixed-rate bonds and LI for inflation-linked ones. It is kept as `curves_design_28.json` and reported.
+
+What it showed: Treasury auctions the same few bonds week after week, so 28 days holds a median of 5 fixed-rate bonds and 3 inflation-linked ones. NSS could be fitted on half the fixed-rate days and 1% of the inflation-linked days, and the inflation-linked choice rested on 15 auctions. The number of bonds per window was then counted, without fitting, for longer windows: at 91 days, 98% of fixed-rate days have six bonds or more, and 83% of inflation-linked days have four or more; inflation-linked windows reach six bonds on fewer than half the days even at a year.
+
+- **Window.** 91 days instead of 28, everywhere the window is used: the screen, the backtest and the valuation-date curves. The sensitivity is 182 days instead of 56.
+- **Inflation-linked curves.** NSS is not fitted. The choice is between LI and NS, on the auctions both can price. C2 is tested on fixed-rate bonds only.
+- Nothing else changes: B0's 91 days, the periods, the screen, the tests and their pass marks.
+
+Reason: the frozen window was too short for how Treasury auctions, which the design period exists to find out. The cost is staleness: a window can hold yields up to three months old, which the backtest charges for.
