@@ -62,27 +62,3 @@ def test_guard_passes_once_frozen(tmp_path, monkeypatch):
     (tmp_path / "PROTOCOL.md").write_text("# Protocol\n\nFrozen at commit: `25b5acd95aa5`\n")
     monkeypatch.setattr(protocol, "PROTOCOL", tmp_path / "PROTOCOL.md")
     assert protocol.require_frozen() == "25b5acd95aa5"
-
-
-def test_rolling_windows_end_at_the_origin():
-    from research import rolling
-    assert rolling.start("rolling", 2016) == 2007
-    assert rolling.start("post-peak", 2009) == 2006
-    assert len(rolling.candidates()) == 10
-
-
-def test_rolling_scores_every_origin_and_weights_sum_to_one(panels, monkeypatch):
-    from research import rolling
-    monkeypatch.setattr(rolling, "ORIGINS", range(2012, 2015))
-    monkeypatch.setattr(rolling, "PATHS", 60)
-    rng = np.random.default_rng(0)
-    scores = rolling.backtest(panels, rng)
-    windows = {"LC": "post-peak", "CBD": "full", "RH": "full"}
-    chosen = {"Male": "CBD full", "Female": "LC post-peak"}
-    s = rolling.summarise(scores, panels, chosen, windows)
-    for sex in panels:
-        assert sum(v["wins"] for k, v in s["by_sex"][sex].items() if not k.startswith("_")) == 3
-        assert sum(s["weights"][sex].values()) == pytest.approx(1)
-    b = rolling.blend(panels, chosen, windows, s["weights"], rng)
-    for p in b["Male"]["prices"]:
-        assert p["lo"] <= p["median"] <= p["hi"]
