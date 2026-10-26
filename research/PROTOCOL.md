@@ -76,3 +76,15 @@ Written before any model was fitted on Stats SA data. Done beforehand, and discl
 - **One sensitivity.** Deaths at every age are divided by that year's completeness at ages 50 to 89, by sex. This lifts each year's total at 50 to 89 to WPP's level while keeping the registered age pattern. It reuses the primary run's windows and models and reports annuity prices only. It measures how much of the price comes from the registration drift and changes nothing else.
 
 Reason: the protocol's primary source could not be fetched as written. This keeps Stats SA's registered deaths, which were the point of the primary series, and takes the only single-age exposure available.
+
+### 26 October 2026: rolling-origin backtest and a blended price
+
+Written after the Stats SA validation results above were seen, and before any rolling fit. It is a robustness check, not a re-selection: windows, chosen models, tests P1 to P4 and the chosen-model prices stay as they are. Reason: on Stats SA deaths the chosen model rests on one three-year validation block, and the model and window choice moves the price at 65 by more than the chosen model's own interval (see RESULTS.md, Decomposition). One block cannot say whether that choice is stable.
+
+- **Origins.** Jump-off T = 2009, 2010, ..., 2016. Each origin is scored on T + 1 to T + 3, so every scored year is in 2010 to 2019 and the Covid years never enter. Both sources, both sexes, ages 50 to 89.
+- **Windows.** At each origin: *full* (1997 to T), *post-peak* (2006 to T) and *rolling* (the 10 years T − 9 to T). LC, CBD and RH are fitted on all three; B0 uses the last three years to T. That is ten candidates per origin and sex.
+- **Scores.** Those of the protocol: Poisson deviance, annuity factor error at 65, 95% interval coverage with process uncertainty only, by origin and horizon. Same simulation size (5,000 paths).
+- **Summaries.** For each sex and candidate: deviance summed over origins, how many of the 8 origins it has the lowest deviance of the ten, mean absolute annuity error and mean coverage.
+- **Two readings, which change nothing.** R1: the chosen model, at its window, has the lowest summed rolling deviance of the ten candidates. R2: the chosen model's mean rolling coverage is at least 90%.
+- **Repricing.** At each origin and at the production jump-off, the price a life aged 65 would have been quoted in the year after jump-off (4%, factor 0.7, median of 5,000 process-only paths), for B0 and for LC, CBD and RH at their protocol windows. It shows how far the price moves when the insurer refits every year.
+- **Blended price.** For each sex, a mixture of LC, CBD and RH at their protocol windows, with weights proportional to 1 / summed rolling deviance at those windows. B0 is left out: it is the no-improvement benchmark, not a forecast. Each model's 5,000 production paths (bootstrap, as in the annuity prices) are pooled, round(weight × 5,000) paths drawn from each, and the median, 95% interval and width are reported for every age, rate and factor. It is shown next to the chosen model's price, labelled as the blend, never in its place.
