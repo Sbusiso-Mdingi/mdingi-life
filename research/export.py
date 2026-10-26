@@ -17,6 +17,7 @@ DV01 of the annuities and of each portfolio and, if keyrate_v3.json exists, the 
 
 If projection_v4.json exists it bundles v4: the scenario generator's parameters and 10-year rate fans, cover across the
 scenarios, the central path's balance sheets and IFRS 17 results, the named stresses, the sensitivities and the checks.
+If capital_v4.json exists too, it adds the starting-capital levels, with v4's own R400 million run as the first.
 
 Refuses to run until the protocol is frozen.
 """
@@ -210,7 +211,23 @@ def v4() -> dict | None:
         "ifrs17": ifrs, "transition": p["transition"],
         "sensitivities": p["sensitivities"],
         "checks": p["checks"],
+        "capital": capital(p),
     }
+
+
+def capital(p: dict) -> dict | None:
+    """The starting-capital levels: v4's R400 million run, then each level in capital_v4.json, by own funds."""
+    f = OUT / "capital_v4.json"
+    if not f.exists():
+        return None
+    c = json.loads(f.read_text())
+    row = lambda funds, scr, cover, share, stresses: {"own_funds": funds, "scr": scr, "cover": cover,
+                                                      "share_covered": share, "stresses": stresses}
+    rows = [row(p["t0"]["own_funds"], p["t0"]["scr"], p["t0"]["cover"], p["scenarios"]["A1"]["share_covered"],
+                {n: min(v["cover"]) for n, v in p["stresses"].items()})]
+    rows += [row(v["own_funds"], v["scr"], v["cover"], v["scenarios"]["A1"]["share_covered"],
+                 {n: s["lowest"] for n, s in v["stresses"].items()}) for v in c["levels"].values()]
+    return {"rule": c["rule"], "levels": sorted(rows, key=lambda x: x["own_funds"])}
 
 
 def e65(log_m: np.ndarray, ages: np.ndarray) -> np.ndarray:

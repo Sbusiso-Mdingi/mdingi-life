@@ -9,7 +9,7 @@ Built in releases. Each one stands on its own and feeds the next.
 | v1 Liabilities | How much does uncertainty about South African mortality move the price of a life annuity? | Run on UN WPP 2024 and on Stats SA registered deaths ([results](research/RESULTS.md)) |
 | v2 Assets | What does the SA government bond curve look like on each auction day, and how well do the assets match the liabilities? | Run on National Treasury auction results, 2010 to 2026 ([results](research/RESULTS_v2.md)) |
 | v3 Balance sheet | What is Mdingi Life's SAM solvency capital requirement, and its cover ratio today? | Run on the standard formula for an invented book of 5,000 annuities and 50,000 funeral policies ([results](research/RESULTS_v3.md)) |
-| v4 Scenarios and reporting | Over the next five years, how likely is Mdingi Life to stay covered, what does it report under IFRS 17, and which shocks would break it? | Run on 1,000 scenarios for the curves, five stresses and IFRS 17 ([results](research/RESULTS_v4.md)) |
+| v4 Scenarios and reporting | Over the next five years, how likely is Mdingi Life to stay covered, what does it report under IFRS 17, and which shocks would break it? | Run on 1,000 scenarios for the curves, five stresses and IFRS 17, plus an exploratory run at higher starting capital ([results](research/RESULTS_v4.md)) |
 
 ## The book
 
@@ -34,7 +34,7 @@ mdingilife/   data, models (B0, LC, CBD, RH), Kannisto tail, annuity factors, sc
 research/     fetch, coverage, backtest, annuities, export; PROTOCOL.md and RESULTS.md
               treasury, curves, annuities_v2; PROTOCOL_v2.md and RESULTS_v2.md
               book_v3, balance_v3, keyrate_v3; PROTOCOL_v3.md and RESULTS_v3.md
-              scenarios_v4, projection_v4; PROTOCOL_v4.md and RESULTS_v4.md
+              scenarios_v4, projection_v4, capital_v4; PROTOCOL_v4.md and RESULTS_v4.md
 tests/        every model and formula on simulated data with known answers
 service/      FastAPI app serving the results
 dashboard/    Vite front end: the company's site (overview, pricing, customers, investments, capital, the next five years, methods and limitations)

@@ -234,17 +234,17 @@ def asset_value(holdings: dict, cashflows: dict, bill: float, cv: Curves, sc: Sc
 
 def run(grids: dict, table: pd.DataFrame, basis: Basis, curves: dict, bonds: dict, settle, matched: bool = True,
         method: str = "duration", book: Book | None = None, assets: float | None = None,
-        holdings: dict | None = None) -> dict:
+        holdings: dict | None = None, scale: float = 1.0) -> dict:
     """v3's balance sheet and SCR. v4 passes an aged `book`, the `assets` carried forward (own funds are what is
     left after BEL and risk margin; by default they are R400 million) and, to hold a portfolio without rematching,
-    the bond `holdings` by kind."""
+    the bond `holdings` by kind. `scale` multiplies the matched holdings (v4's starting-capital levels)."""
     b = book or Book(grids, table, basis)
     cv = Curves(curves[basis.curve]["nominal"], curves[basis.curve]["real"])
     L0 = liabilities(b, cv, BASE)
     bel = totals(L0)
     if holdings is None:
         m = match(b, cv, bonds, settle, method) if matched else {}
-        holdings = {k: v["units"] for k, v in m.items()}
+        holdings = {k: {code: n * scale for code, n in v["units"].items()} for k, v in m.items()}
         cashflows = {**bond_book(bonds, settle, "real"), **bond_book(bonds, settle, "nominal")}
     else:
         m = {}

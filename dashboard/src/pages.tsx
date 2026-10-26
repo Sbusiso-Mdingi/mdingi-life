@@ -44,6 +44,8 @@ function Pill({ kind, children }: { kind: "good" | "bad" | "warn"; children: Rea
       <svg width="10" height="10" viewBox="0 0 12 12" aria-hidden="true">
         {kind === "good" ? (
           <path d="M2 6.5 4.8 9.2 10 3" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+        ) : kind === "warn" ? (
+          <path d="M6 2.5v4.5M6 9.5v.01" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
         ) : (
           <path d="M3 3l6 6M9 3l-6 6" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
         )}
@@ -103,7 +105,16 @@ function Fiction() {
 }
 
 /** The first starting capital at which 95% of futures stay covered every year, if any level reached it. */
-export const crossing = (r: Research) => r.v4?.capital?.levels.find((x) => x.share_covered >= 0.95) ?? null;
+/** Industry-typical starting capital, about 1.8 times the SCR: the upper reference point for the 95% crossing. */
+const REFERENCE = 627e6;
+
+/** The levels either side of 95%: the highest run below it, and R627m (or the first level above 95%, if R627m is not). */
+export const crossing = (r: Research) => {
+  const L = r.v4?.capital?.levels ?? [];
+  const hi = L.find((x) => x.own_funds === REFERENCE && x.share_covered >= 0.95) ?? L.find((x) => x.share_covered >= 0.95);
+  const lo = hi && [...L].reverse().find((x) => x.own_funds < hi.own_funds && x.share_covered < 0.95);
+  return hi && lo ? { lo, hi } : null;
+};
 
 type Finding = { key: string; figure: string; pill?: ReactNode; text: ReactNode; tab?: Tab };
 
@@ -182,12 +193,14 @@ export function Overview({ r, go }: { r: Research; go: Go }) {
             ? [
                 {
                   key: "capital",
-                  figure: cross ? randM(cross.own_funds) : `> ${randM(top.own_funds)}`,
-                  pill: cross ? <Pill kind="warn">{coverPct(cross.cover)} cover today</Pill> : <Pill kind="bad">95% not reached</Pill>,
+                  figure: cross ? `${randM(cross.lo.own_funds)} to ${randM(cross.hi.own_funds)}` : `> ${randM(top.own_funds)}`,
+                  pill: <Pill kind="warn">Exploratory</Pill>,
                   text: cross ? (
                     <>
-                      of starting capital, instead of {randM(levels[0].own_funds)}, is where {pct(cross.share_covered, 0)} of futures stay covered every year. Even
-                      then, longer-living pensioners take cover to {coverPct(cross.stresses["S2 Longevity"])}.
+                      of starting capital, instead of {randM(levels[0].own_funds)}, is where the share of futures staying covered every year crosses 95%:{" "}
+                      {pct(cross.lo.share_covered, 0)} at {randM(cross.lo.own_funds)}, {pct(cross.hi.share_covered, 0)} at {randM(cross.hi.own_funds)}. Even at{" "}
+                      {randM(cross.hi.own_funds)}, longer-living pensioners take cover to {coverPct(cross.hi.stresses["S2 Longevity"])}. I added these runs
+                      after seeing the first result.
                     </>
                   ) : (
                     <>
@@ -238,7 +251,7 @@ export function Overview({ r, go }: { r: Research; go: Go }) {
 
       <section className="section">
         <h2>What it shows</h2>
-        <p className="sub">The main results on one screen. Each was measured against a pass mark I wrote down before running it.</p>
+        <p className="sub">The main results on one screen. Each was measured against a pass mark I wrote down before running it, except the capital levels, which I added afterwards.</p>
         <div className="card">
           <ul className="findings">
             {findings.map((f) => (
@@ -1165,8 +1178,10 @@ export function Built({ r }: { r: Research }) {
               results are reported too.
             </li>
             <li>
-              <strong>Starting capital (v4)</strong>
-              The capital levels and the rule for investing the extra were written at <Commit hash="28e4b67" when="14:51" />, before any level was run.
+              <strong>Starting capital (v4), exploratory</strong>
+              Added after seeing the first result. The levels and the rule for investing the extra were written at <Commit hash="28e4b67" when="14:51" />,
+              before any level was run. After R600m to R1,000m had run, I stopped at R500m rather than narrowing to the nearest R25m, and report the crossing
+              as an interval (<Commit hash="55fbcb9" when="16:15" />, before the R500m result).
             </li>
           </ul>
         </div>
@@ -1555,13 +1570,15 @@ export function Future({ r }: { r: Research }) {
 function CapitalCurve({ c }: { c: NonNullable<NonNullable<Research["v4"]>["capital"]> }) {
   const L = c.levels;
   const xs = L.map((x) => x.own_funds / 1e6);
-  const hit = L.find((x) => x.share_covered >= 0.95);
+  const hit = L.find((x) => x.own_funds === REFERENCE && x.share_covered >= 0.95) ?? L.find((x) => x.share_covered >= 0.95);
+  const below = hit && [...L].reverse().find((x) => x.own_funds < hit.own_funds && x.share_covered < 0.95);
   const names = Object.keys(L[0].stresses);
   return (
     <section className="panel">
       <div className="panel-head">
         <div>
           <h2 className="serif">How much capital would be enough?</h2>
+          <Pill kind="warn">Exploratory</Pill>
           <p className="eyebrow">Share of the 1,000 futures above 100% at every year-end, by starting capital. Rule: {c.rule}.</p>
         </div>
       </div>
@@ -1583,10 +1600,11 @@ function CapitalCurve({ c }: { c: NonNullable<NonNullable<Research["v4"]>["capit
         height={280}
       />
       <p className="note">
-        I ran the same thousand futures and five disasters again with more starting capital, each extra rand invested in the same mix of bonds and bills as
-        today's assets.{" "}
-        {hit
-          ? `The 95% target is first met at ${randM(hit.own_funds)}, a cover of ${coverPct(hit.cover)} today.`
+        I added this after seeing that only {pct(L[0].share_covered, 0)} of futures stay covered at {randM(L[0].own_funds)}, so it is an exploration, not a
+        test set beforehand. Every level uses the same 1,000 futures, regenerated from the same seed, and the same five disasters; each extra rand is invested in
+        the same mix of bonds and bills as today's assets.{" "}
+        {hit && below
+          ? `The 95% target is crossed between ${randM(below.own_funds)} (${pct(below.share_covered, 1)}) and ${randM(hit.own_funds)} (${pct(hit.share_covered, 1)}), the industry-typical cover of about 1.8 times. I did not run points in between to narrow it.`
           : `Even ${randM(L[L.length - 1].own_funds)} does not reach 95%.`}{" "}
         Every point is a full run; the line between them is drawn, not modelled.
       </p>

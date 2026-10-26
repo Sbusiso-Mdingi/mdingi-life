@@ -195,7 +195,7 @@ def revalue(r: dict, settle, curves: dict) -> float:
 
 def valuation(b: Book, curves: dict, settle, assets=None, holdings=None, matched: bool = True) -> dict:
     return run(CTX["grids"], CTX["table"], b.basis, {b.basis.curve: curves}, CTX["bonds"], settle, matched=matched,
-               method="key", book=b, assets=assets, holdings=holdings)
+               method="key", book=b, assets=assets, holdings=holdings, scale=CTX.get("scale", 1.0))
 
 
 def slim(r: dict) -> dict:

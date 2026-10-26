@@ -123,6 +123,27 @@ Calibrated and run exactly as frozen, on the same seed: τ 1.5 nominal and 3.5 r
 - **A trial run, disclosed.** After the amendment and before the full run, the projection was run on 16 scenarios to test the code. It showed that the longevity shock was compounding with the projection year: each year-end shifted t = 0's already-stressed rates forward instead of stressing that year-end's own rates, so the higher improvement ran from t = 0 rather than from the year after the year-end, and the longevity charge reached R377 million by year 3 instead of about R283 million. The stressed rows are now rebuilt at each year-end from the base table, starting at that year-end, which reproduces v3's t = 0 rows exactly. This was a code error, not a method change, and no setting was tuned on the trial's results. The full run then used the frozen seed and 1,000 scenarios.
 - **The history in the dashboard** is the September month-end 10-year rate from the Nelson-Siegel fits. Its September 2026 value (9.6% nominal) differs slightly from the t = 0 rate on the valuation curve (9.4%), which every scenario starts from.
 
+## Starting capital, exploratory
+
+Added after the result above was seen, under the protocol's two dated additions of 26 October 2026 (`28e4b67`, written before any level was run, and `55fbcb9`, which stopped the refinement while R500 million was running). It explores how much starting capital A1 would need. It is not a test with a pass mark, and R400 million stays the main result.
+
+Extra capital is invested in the same mix as today's assets: the key-rate matched bonds and the bill are scaled by k, total assets at the level over total assets at R400 million (R4,405.3 million), at t = 0 and at every rematch. Every level uses the same 1,000 futures, regenerated from v4's seed (20261027) on the same calibration, and the same five stresses. Each run reproduced v4's t = 0 cover of 1.1486 at R400 million before running its levels. Run on a 12-vCPU Google Cloud VM; raw output in `research/results/capital_v4.json`.
+
+| Starting capital | k | SCR | Cover, t = 0 | Covered throughout | S1 | S2 | S3 | S4 | S5 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| R400m (v4, not rerun) | 1 | R348.2m | 1.15 | 60.1% | 0.68 | 0.21 | 1.15 | 1.15 | 0.67 |
+| R500m | 1.0227 | R344.5m | 1.45 | 89.9% | 0.93 | 0.45 | 1.45 | 1.46 | 0.92 |
+| R600m | 1.0454 | R342.4m | 1.75 | 97.7% | 1.18 | 0.70 | 1.75 | 1.76 | 1.17 |
+| R627m (about 1.8 × SCR) | 1.0515 | R342.1m | 1.83 | 98.7% | 1.24 | 0.77 | 1.83 | 1.84 | 1.24 |
+| R800m | 1.0908 | R350.7m | 2.28 | 100.0% | 1.66 | 1.23 | 2.28 | 2.29 | 1.66 |
+| R1,000m | 1.1362 | R364.0m | 2.75 | 100.0% | 2.10 | 1.81 | 2.75 | 2.76 | 2.10 |
+
+S1 to S5 are the lowest cover at any year-end under each stress.
+
+- **The 95% crossing lies between R500 million (89.9%) and R627 million (98.7%),** with R627 million, the industry-typical cover, as the upper reference point. No levels were run in between to narrow it.
+- **The SCR moves little.** It dips to R342 million at R600 to R627 million, then rises to R364 million at R1,000 million as the larger bond holdings add to the interest-rate stress losses.
+- **Longevity is the last stress to clear.** S1, S3, S4 and S5 stay above 1.0 from R600 million. S2 does not until somewhere between R627 million (0.77) and R800 million (1.23). Capital that makes the scenarios safe still leaves the company exposed to pensioners living longer.
+
 ## What it points to
 
 The company's risk is now mostly longevity and the parts of the balance sheet the hedge does not reach. Two steps follow, neither modelled here: reinsuring part of the longevity risk, which shrinks both the SCR and the risk margin, and hedging the risk margin's and SCR's rate sensitivity alongside the BEL's. Either would also need its own frozen plan.
