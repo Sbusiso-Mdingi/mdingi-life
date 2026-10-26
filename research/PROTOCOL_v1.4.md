@@ -23,7 +23,7 @@ Changed once more on 27 October 2026, before the freeze, at the user's request a
 
 Nothing in v1.4 had been fitted to real data before any of these changes.
 
-Frozen at commit: (not yet frozen)
+Frozen at commit: 442508e4fb728513ca2eddd3401f627e78c6f3dd (27 October 2026)
 
 ## The question
 
