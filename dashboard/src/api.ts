@@ -148,6 +148,8 @@ export type Ifrs = {
   finance_result: number[];
 };
 
+export type CapitalLevel = { own_funds: number; scr: number; cover: number; share_covered: number; stresses: Record<string, number> };
+
 export type V4 = {
   protocol: string;
   valuation_date: string;
@@ -171,6 +173,7 @@ export type V4 = {
     A1: { share_covered: number; pass: boolean };
     A2: Record<string, boolean>;
   };
+  capital?: { rule: string; levels: CapitalLevel[] } | null;
 };
 
 export type Research = {

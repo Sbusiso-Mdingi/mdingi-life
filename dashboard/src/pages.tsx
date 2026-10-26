@@ -3,7 +3,7 @@ import type { Book, Pct, Research, Sex, V3 } from "./api";
 import { BarChart, IntervalChart, YearChart, type BarGroup, type Interval } from "./charts";
 import { BalanceSheet, Backtest, CurveBacktest, CurvePanel, CurvePrices, FanPanel, History, Interest, Matching, Sensitivity, Sources } from "./detail";
 import { SEX_LABEL, num, pct, thousands } from "./format";
-import { AGES, COLOR, KEYS, Legend, REPO, SEXES, Segmented, TableView, Verdict, f2, longDate, v2find } from "./ui";
+import { ADJS, AGES, COLOR, KEYS, Legend, REPO, SEXES, Segmented, TableView, Verdict, longDate, v2find } from "./ui";
 
 export type Tab = "overview" | "quote" | "customers" | "investments" | "capital" | "future" | "built";
 type Go = (t: Tab) => void;
@@ -15,6 +15,17 @@ const cents = (v: number) => `R${v.toFixed(2)}`;
 const coverPct = (c: number) => `${Math.round(c * 100)}%`;
 const PERSON: Record<Sex, string> = { Male: "Man", Female: "Woman" };
 const doc = (f: string) => `${REPO}/blob/main/research/${f}`;
+const MARGIN = 0.2; // the funeral pricing basis, research/book_v3.py
+
+/** The caveat on every 95% range from the mortality forecast: the backtest found them too narrow. */
+export function LowerBound() {
+  return (
+    <p className="note caveat">
+      <strong>These ranges are too narrow.</strong> In the backtest, the forecast's 95% ranges caught fewer than 90% of the death rates that actually
+      happened, so treat every range from it as a lower bound on the real uncertainty.
+    </p>
+  );
+}
 
 function Stat({ label, value, sub, good, children }: { label: string; value: string; sub?: ReactNode; good?: boolean; children?: ReactNode }) {
   return (
@@ -81,12 +92,28 @@ const current = (v: V3) => v.key_rate ?? v.main;
 
 // Overview ----------------------------------------------------------------------------------------------------------
 
+/** The disclaimer, kept above the fold on the pages people land on. */
+function Fiction() {
+  return (
+    <p className="fiction" role="note">
+      <strong>Mdingi Life is fictional and sells nothing.</strong> I generated its customers with a seeded random draw; the death records, bond auctions and
+      capital rules are real. Nothing here is a quote or actuarial advice.
+    </p>
+  );
+}
+
+/** The first starting capital at which 95% of futures stay covered every year, if any level reached it. */
+export const crossing = (r: Research) => r.v4?.capital?.levels.find((x) => x.share_covered >= 0.95) ?? null;
+
+type Finding = { key: string; figure: string; pill?: ReactNode; text: ReactNode; tab?: Tab };
+
 export function Overview({ r, go }: { r: Research; go: Go }) {
   const v = r.v3!;
   const b = v.book!;
   const now = current(v);
   const k = v.key_rate;
   const m = v.main;
+  const v4 = r.v4;
   const pension = r.v2 ? v2find(r.v2, "Female", 65, 0.7)["inflation-linked LI"].median * 120_000 : null;
   const real = k ? Object.values(k.holdings.real).reduce((a, x) => a + x, 0) : m.matching.real.liability.value;
   const fixed = k ? Object.values(k.holdings.nominal).reduce((a, x) => a + x, 0) : m.matching.nominal.liability.value;
@@ -98,96 +125,194 @@ export function Overview({ r, go }: { r: Research; go: Go }) {
     { key: "bill", label: "Treasury bill (cash)", value: m.assets.bill, color: "#8a968f" },
   ];
   const owe = [
-    { key: "bel", label: "What we expect to pay customers", value: now.bel.total, color: "var(--s3)" },
+    { key: "bel", label: "Owed to customers (best estimate)", value: now.bel.total, color: "var(--s3)" },
     { key: "rm", label: "Risk margin", value: now.risk_margin, color: "var(--gold)" },
-    { key: "own", label: "Our own capital", value: now.own_funds, color: "var(--primary-strong)" },
+    { key: "own", label: "Own capital", value: now.own_funds, color: "var(--primary-strong)" },
   ];
   const total = m.assets.total;
-  const cut = k ? 1 - k.interest.combined / m.interest.combined : 0;
+  const p3 = r.backtest.tests.P3;
+  const longevity = v4?.stresses["S2 Longevity"];
+  const cross = crossing(r);
+  const levels = v4?.capital?.levels ?? [];
+  const top = levels[levels.length - 1];
+  const findings: Finding[] = [
+    {
+      key: "today",
+      figure: coverPct(now.cover),
+      pill: now.cover >= 1 ? <Pill kind="good">Above 100%</Pill> : <Pill kind="bad">Below 100%</Pill>,
+      text: (
+        <>
+          Solvency cover today, on {randM(now.own_funds)} of capital. My first choice of bonds gave {coverPct(m.cover)}, short of the regulator's 100%;
+          spreading the same money across {bonds} bonds of 5 to 30 years cut the interest-rate charge from {randM(m.market)} to {randM(now.market)}.
+        </>
+      ),
+      tab: "capital",
+    },
+    ...(v4
+      ? [
+          {
+            key: "five",
+            figure: pct(v4.scenarios.A1.share_covered, 0),
+            pill: v4.scenarios.A1.pass ? <Pill kind="good">Meets the 95% target</Pill> : <Pill kind="bad">Misses the 95% target</Pill>,
+            text: (
+              <>
+                of 1,000 simulated five-year futures keep cover above 100% at every year-end. I set the target at 95% before running them. The bonds
+                hedge what is owed to customers, not the regulator's add-ons, so a fall in rates still hurts.
+              </>
+            ),
+            tab: "future" as Tab,
+          },
+          ...(longevity
+            ? [
+                {
+                  key: "longevity",
+                  figure: coverPct(Math.min(...longevity.cover)),
+                  pill: <Pill kind="bad">Needs {randM(longevity.capital_to_restore)}</Pill>,
+                  text: (
+                    <>
+                      is where cover falls if pensioners' death rates are 20% lower for good. Longevity is the company's biggest risk by far, and the one
+                      disaster it cannot ride out without new capital.
+                    </>
+                  ),
+                  tab: "future" as Tab,
+                },
+              ]
+            : []),
+          ...(levels.length > 1
+            ? [
+                {
+                  key: "capital",
+                  figure: cross ? randM(cross.own_funds) : `> ${randM(top.own_funds)}`,
+                  pill: cross ? <Pill kind="warn">{coverPct(cross.cover)} cover today</Pill> : <Pill kind="bad">95% not reached</Pill>,
+                  text: cross ? (
+                    <>
+                      of starting capital, instead of {randM(levels[0].own_funds)}, is where {pct(cross.share_covered, 0)} of futures stay covered every year. Even
+                      then, longer-living pensioners take cover to {coverPct(cross.stresses["S2 Longevity"])}.
+                    </>
+                  ) : (
+                    <>
+                      of starting capital would be needed for 95% of futures to stay covered: at {randM(top.own_funds)}, {pct(top.share_covered, 0)} do. I
+                      stopped the range there, as planned.
+                    </>
+                  ),
+                  tab: "future" as Tab,
+                },
+              ]
+            : []),
+        ]
+      : []),
+    {
+      key: "ranges",
+      figure: "Ranges too narrow",
+      pill: p3.Male && p3.Female ? <Pill kind="good">Backtest passed</Pill> : <Pill kind="bad">Backtest failed</Pill>,
+      text: (
+        <>
+          The mortality forecast's 95% ranges caught fewer than 90% of the death rates that actually happened in the backtest
+          {p3.Male !== p3.Female ? ` for ${p3.Male ? "women" : "men"}` : ", for men and women"}, so every pension range on this site is a lower bound on the real
+          uncertainty.
+        </>
+      ),
+      tab: "built",
+    },
+  ];
   return (
     <>
       <section className="hero">
-        <p className="kicker">Welcome to Mdingi Life</p>
-        <h1>
-          We pay pensions to {thousands(b.annuities.n)} retirees and cover {thousands(b.funeral.n)} families' funerals.
-        </h1>
+        <p className="kicker">A portfolio project by Sbusiso Mdingi</p>
+        <h1>I built a model South African life insurer to see whether it could keep its promises.</h1>
         <p>
-          Take a look around as if it were your first week here. Quote a customer, meet the people we cover, see where their money is invested, and
-          check that we can keep every promise, even in a very bad year.
+          It pays pensions to {thousands(b.annuities.n)} retirees and covers {thousands(b.funeral.n)} families' funerals. I priced them on Stats SA death
+          records, invested the money on National Treasury bond auctions, tested the capital against the Prudential Authority's rules, and projected it
+          five years ahead.
         </p>
+        <Fiction />
         <div className="actions">
           <button className="cta" onClick={() => go("quote")}>
-            Get a quote
+            Try the pricing
           </button>
-          <button className="cta ghost" onClick={() => go("capital")}>
-            How safe are we?
+          <button className="cta ghost" onClick={() => go("built")}>
+            Methods and limitations
           </button>
         </div>
       </section>
 
+      <section className="section">
+        <h2>What it shows</h2>
+        <p className="sub">The main results on one screen. Each was measured against a pass mark I wrote down before running it.</p>
+        <div className="card">
+          <ul className="findings">
+            {findings.map((f) => (
+              <li key={f.key}>
+                <div className="figure">
+                  {f.figure} {f.pill}
+                </div>
+                <p>
+                  {f.text}{" "}
+                  {f.tab && (
+                    <button className="link" onClick={() => go(f.tab!)}>
+                      Details →
+                    </button>
+                  )}
+                </p>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </section>
+
       <div className="grid four kpis">
-        <Stat label="Pensions paid each year" value={randM(b.annuities.income)} sub={`To ${thousands(b.annuities.n)} retirees, typically aged ${Math.round(b.annuities.median_age)}`} />
+        <Stat label="Pensions paid each year" value={randM(b.annuities.income)} sub={`To ${thousands(b.annuities.n)} retirees, median age ${Math.round(b.annuities.median_age)}`} />
         <Stat label="Funeral cover in force" value={b.funeral.cover >= 1e9 ? randBn(b.funeral.cover) : randM(b.funeral.cover)} sub={`${thousands(b.funeral.n)} policies, from ${cents(minPremium)} a month`} />
-        <Stat label="Invested for our customers" value={randBn(total)} sub={`In ${bonds} South African government bonds, and cash`} />
-        <Stat label="Solvency cover" value={coverPct(now.cover)} good={now.cover >= 1} sub={`${randM(now.own_funds)} of capital against ${randM(now.scr)} required`}>
-          {now.cover >= 1 ? <Pill kind="good">Above the regulator's 100%</Pill> : <Pill kind="bad">Below the regulator's 100%</Pill>}
-        </Stat>
+        <Stat label="Total assets" value={randBn(total)} sub={`${randBn(now.bel.total)} of it is owed to customers; the rest backs the risk margin and own capital`} />
+        <Stat label="Solvency cover" value={coverPct(now.cover)} good={now.cover >= 1} sub={`${randM(now.own_funds)} of capital against ${randM(now.scr)} required`} />
       </div>
 
       <section className="section">
-        <h2>Our year so far</h2>
-        <p className="sub">Four things happened at Mdingi Life this year. Each one has its own page.</p>
+        <h2>How I built it</h2>
         <div className="steps">
           <div className="card step">
             <span className="num-badge">1</span>
-            <h3>We priced our pensions</h3>
+            <h3>Pricing the pensions</h3>
             <p>
-              Using 26 years of Stats SA death records, we forecast how long our customers will live, and how unsure that forecast is.
-              {pension && " A woman of 65 who wants R10,000 a month for life, rising with inflation, pays once:"}
+              I forecast how long people live from 26 years of Stats SA death records, with ranges from simulated futures.
+              {pension && " A woman of 65 who wants R10,000 a month for life, rising with inflation, would pay once:"}
             </p>
-            {pension && <div className="figure">{randFull(Math.round(pension / 1000) * 1000)}</div>}
+            {pension && <div className="figure">{randFull(Math.round(pension / 100) * 100)}</div>}
             <button className="link" onClick={() => go("quote")}>
-              Get your own quote →
+              Price your own →
             </button>
           </div>
           <div className="card step">
             <span className="num-badge">2</span>
-            <h3>We invested the money</h3>
+            <h3>Investing the money</h3>
             <p>
-              Pensions are paid for decades. So the money sits in government bonds that pay us back over the same years, read off the Treasury's own
-              auctions.
+              Pensions are paid for decades, so the money sits in government bonds that pay back over the same years, priced on yield curves I fitted to the
+              Treasury's auctions.
             </p>
             <div className="figure">{randBn(total)}</div>
             <button className="link" onClick={() => go("investments")}>
-              See where it is →
+              See the holdings →
             </button>
           </div>
           <div className="card step">
             <span className="num-badge">3</span>
-            <h3>We took the regulator's test</h3>
+            <h3>Testing the capital</h3>
             <p>
-              The rules ask: if a 1-in-200 year hit, could we still pay everyone? With our first choice of bonds, not quite. We needed {coverPct(1)} and had:
+              The regulator's standard formula asks whether the company could still pay everyone after a 1-in-200 year. With rebalanced bonds, cover is:
             </p>
-            <div className="figure">
-              {coverPct(m.cover)} {m.cover < 1 && <Pill kind="bad">Short by {randM(m.scr - m.own_funds, 0)}</Pill>}
-            </div>
+            <div className="figure">{coverPct(now.cover)}</div>
             <button className="link" onClick={() => go("capital")}>
-              What went wrong →
+              What it holds capital against →
             </button>
           </div>
-          {k && (
+          {v4 && (
             <div className="card step">
               <span className="num-badge">4</span>
-              <h3>We fixed it without new money</h3>
-              <p>
-                We spread the bonds across 5 to 30 years, so they move the way our pensions do. That cut our interest-rate risk by {pct(cut, 0)} and lifted
-                cover to:
-              </p>
-              <div className="figure">
-                {coverPct(k.cover)} {k.cover >= 1 && <Pill kind="good">Covered</Pill>}
-              </div>
-              <button className="link" onClick={() => go("investments")}>
-                How matching works →
+              <h3>Looking five years ahead</h3>
+              <p>A thousand simulated paths for interest rates and inflation, and five named disasters. Futures that stay above 100% every year:</p>
+              <div className="figure">{pct(v4.scenarios.A1.share_covered, 0)}</div>
+              <button className="link" onClick={() => go("future")}>
+                The five-year view →
               </button>
             </div>
           )}
@@ -195,13 +320,13 @@ export function Overview({ r, go }: { r: Research; go: Go }) {
       </section>
 
       <section className="section">
-        <h2>Our balance sheet in one picture</h2>
+        <h2>The balance sheet in one picture</h2>
         <p className="sub">
-          What we own, and who it is for, on {longDate(v.valuation_date)}. Both sides add up to {randBn(total)}.
+          What the company owns, and who it is for, on {longDate(v.valuation_date)}. Both sides add up to {randBn(total)}.
         </p>
         <div className="card">
           {[
-            { who: "What we own", parts: own },
+            { who: "What it owns", parts: own },
             { who: "Who it's for", parts: owe },
           ].map((row) => (
             <div className="stack-row" key={row.who}>
@@ -225,9 +350,9 @@ export function Overview({ r, go }: { r: Research; go: Go }) {
           </div>
           <div className="callout">
             <strong>Why the funeral business shows up as a plus</strong>
-            Our funeral customers will pay us {randM(m.bel_parts.premiums)} in future premiums, against {randM(m.bel_parts.claims)} of claims and{" "}
-            {randM(m.bel_parts.fun_expenses)} of running costs. The {randM(-m.bel.funeral)} difference is netted off what we owe. The risk margin is what
-            another insurer would charge to take the book over; our own capital is the cushion above that.
+            Funeral customers are expected to pay {randM(m.bel_parts.premiums)} in future premiums, against {randM(m.bel_parts.claims)} of claims and{" "}
+            {randM(m.bel_parts.fun_expenses)} of running costs. The {randM(-m.bel.funeral)} difference is netted off what the pensions are owed. The risk margin
+            is what another insurer would charge to take the book over; own capital is the cushion above that.
           </div>
         </div>
       </section>
@@ -263,14 +388,14 @@ export function Quote({ r }: { r: Research }) {
 
   return (
     <>
-      <PageHead kicker="Get a quote" title="What would cover cost you?">
-        These are the prices our pricing team works with. They are built on Stats SA death records and on the government bond market of{" "}
-        {longDate(v2.curves.ilb.date)}.
+      <PageHead kicker="Pricing" title="What would cover cost?">
+        Prices from my models, built on Stats SA death records and on the government bond market of {longDate(v2.curves.ilb.date)}.
       </PageHead>
+      <Fiction />
       <div className="grid two">
         <section className="card" aria-label="Retirement income quote">
           <h3>A pension for life</h3>
-          <p>Pay once when you retire, and we pay you every month for as long as you live.</p>
+          <p>Pay once when you retire, and receive an income every month for as long as you live.</p>
           <div className="quote" style={{ marginTop: 20 }}>
             <div>
               <div className="field">
@@ -304,7 +429,8 @@ export function Quote({ r }: { r: Research }) {
               <span className="line">You pay once</span>
               <span className="big">{randFull(Math.round((p.median * yearly) / 100) * 100)}</span>
               <span className="line">
-                Likely range <b>{randFull(Math.round((p.lo * yearly) / 100) * 100)}</b> to <b>{randFull(Math.round((p.hi * yearly) / 100) * 100)}</b>
+                95% range <b>{randFull(Math.round((p.lo * yearly) / 100) * 100)}</b> to <b>{randFull(Math.round((p.hi * yearly) / 100) * 100)}</b>, a lower
+                bound on the real uncertainty
               </span>
               <span className="line" style={{ marginTop: 8 }}>
                 That is <b>{num(p.median, 1)} years</b> of income up front.{" "}
@@ -341,7 +467,8 @@ export function Quote({ r }: { r: Research }) {
                 Your family receives <b>{randFull(sum)}</b>
               </span>
               <span className="line" style={{ marginTop: 8 }}>
-                <b>{cents(rate.fixed)}</b> of it covers running your policy, and <b>{cents(rate.per_rand * sum)}</b> the cover itself.
+                <b>{cents((1 - MARGIN) * rate.per_rand * sum)}</b> pays for the cover, <b>{cents((1 - MARGIN) * rate.fixed)}</b> for running the policy, and{" "}
+                <b>{cents(MARGIN * premium)}</b> is the {pct(MARGIN, 0)} margin.
               </span>
             </div>
           </div>
@@ -353,27 +480,75 @@ export function Quote({ r }: { r: Research }) {
           <div>
             <h2 className="serif">Why a pension quote is a range</h2>
             <p className="eyebrow">
-              {kind === "inflation-linked" ? "Rising" : "Level"} pension of {randFull(monthly)} a month: what it costs, in R million, with the range our forecast allows
+              {kind === "inflation-linked" ? "Rising" : "Level"} pension of {randFull(monthly)} a month: what it costs, in R million, with the forecast's 95% range
             </p>
           </div>
         </div>
         <IntervalChart label={`Price of a pension of ${randFull(monthly)} a month by sex and age at retirement, R million`} rows={rows} fmt={(x) => `R${x.toFixed(2)}m`} groups={2} />
         <p className="note">
-          The price depends on how long you will live, and nobody knows that for sure. We forecast it from Stats SA death records and simulate thousands of
-          possible futures; the bar is the middle 95% of them. Women live longer, so their pensions cost more. We assume people who buy pensions live
-          longer than South Africans on average, with death rates 30% lower.
+          The price depends on how long you will live, and nobody knows that for sure. I forecast it from Stats SA death records and simulate thousands of
+          possible futures; the bar is the middle 95% of them. Women live longer, so their pensions cost more.
         </p>
+        <LowerBound />
         <div className="callout">
           <strong>What a real quote would add</strong>
-          These prices cover the pension itself. A real insurer adds its costs, commission and profit, and checks your health. The funeral premiums already
-          include our running costs (R15 a month) and a 20% margin.
+          These pension prices cover the income alone, with no loading for costs, commission or profit, and no health check. That is also why the
+          company's profit from insurance is small: almost all of it comes from investment return. The funeral premiums do include running costs (R15 a
+          month) and a {pct(MARGIN, 0)} margin.
+        </div>
+      </section>
+
+      <section className="panel">
+        <div className="panel-head">
+          <div>
+            <h2 className="serif">The assumption that moves the price most</h2>
+            <p className="eyebrow">
+              {PERSON[sex]} retiring at {age}, {kind === "inflation-linked" ? "rising" : "level"} pension of {randFull(monthly)} a month, by how much longer
+              pension buyers live than South Africans on average
+            </p>
+          </div>
+        </div>
+        <p>
+          People who buy pensions tend to be wealthier and live longer than the population the death records cover. I assume their death rates are 30%
+          lower. No public South African data on pensioners' deaths was available to estimate it, so this is a judgement, and it moves the price more
+          than the forecast's own range does.
+        </p>
+        <div className="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Pension buyers' death rates</th>
+              <th className="num">You pay once</th>
+              <th className="num">95% range</th>
+              <th className="num">Change</th>
+            </tr>
+          </thead>
+          <tbody>
+            {ADJS.map((adj) => {
+              const q = v2find(v2, sex, age, adj)[`${kind} LI`];
+              const base = p.median;
+              return (
+                <tr key={adj} className={Math.abs(adj - 0.7) < 1e-9 ? "total" : undefined}>
+                  <td>
+                    {pct(1 - adj, 0)} below average{Math.abs(adj - 0.7) < 1e-9 ? " (used everywhere)" : ""}
+                  </td>
+                  <td className="num">{randFull(Math.round((q.median * yearly) / 100) * 100)}</td>
+                  <td className="num">
+                    {randFull(Math.round((q.lo * yearly) / 1000) * 1000)} to {randFull(Math.round((q.hi * yearly) / 1000) * 1000)}
+                  </td>
+                  <td className="num">{Math.abs(adj - 0.7) < 1e-9 ? "" : `${q.median > base ? "+" : "−"}${pct(Math.abs(q.median / base - 1), 0)}`}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
         </div>
       </section>
     </>
   );
 }
 
-// Our customers -----------------------------------------------------------------------------------------------------
+// Customers ---------------------------------------------------------------------------------------------------------
 
 function AgeChart({ label, ages, color, first }: { label: string; ages: Book["annuities"]["ages"]; color: string; first?: number }) {
   const groups: BarGroup[] = ages.from.map((f, i) => ({
@@ -392,8 +567,13 @@ export function Customers({ r }: { r: Research }) {
   const ago = (n: number) => (n === 0 ? "this year" : n === 1 ? "a year ago" : `${n} years ago`);
   return (
     <>
-      <PageHead kicker="Our customers" title="The people we look after">
-        {thousands(a.n)} pensioners and {thousands(f.n)} funeral policyholders. They are invented, but drawn to look like a real South African book.
+      <PageHead kicker="The customers" title="Who the company covers">
+        {thousands(a.n)} pensioners and {thousands(f.n)} funeral policyholders, all invented. I drew them at random, from a fixed seed in{" "}
+        <a href={`${REPO}/blob/main/research/book_v3.py`} target="_blank" rel="noreferrer">
+          book_v3.py
+        </a>
+        : pensions bought at 55 to 75 with incomes spread around R60,000 a year, and funeral policies taken out at around 38 for R10,000 to R30,000 of cover.
+        The shapes are my choices, not taken from any insurer's data.
       </PageHead>
 
       <div className="grid two">
@@ -402,11 +582,11 @@ export function Customers({ r }: { r: Research }) {
           <div className="grid three" style={{ marginTop: 14, gap: 10 }}>
             <div className="metric">
               <div className="value">{Math.round(a.median_age)}</div>
-              <div className="sub">typical age</div>
+              <div className="sub">median age</div>
             </div>
             <div className="metric">
               <div className="value">{randFull(Math.round(a.median_income / 12 / 10) * 10)}</div>
-              <div className="sub">typical monthly pension</div>
+              <div className="sub">median monthly pension; the average is {randFull(Math.round(a.income / a.n / 12 / 10) * 10)}, pulled up by a few large ones</div>
             </div>
             <div className="metric">
               <div className="value">{pct(rising, 0)}</div>
@@ -423,11 +603,11 @@ export function Customers({ r }: { r: Research }) {
           <div className="grid three" style={{ marginTop: 14, gap: 10 }}>
             <div className="metric">
               <div className="value">{Math.round(f.median_age)}</div>
-              <div className="sub">typical age</div>
+              <div className="sub">median age</div>
             </div>
             <div className="metric">
               <div className="value">{cents(f.median_premium)}</div>
-              <div className="sub">typical monthly premium</div>
+              <div className="sub">median monthly premium</div>
             </div>
             <div className="metric">
               <div className="value">{pct(women, 0)}</div>
@@ -442,8 +622,8 @@ export function Customers({ r }: { r: Research }) {
       </div>
 
       <section className="section">
-        <h2>Meet a few of them</h2>
-        <p className="sub">The first policies on our books.</p>
+        <h2>A few of them</h2>
+        <p className="sub">The first policies in the book.</p>
         <div className="grid four">
           {a.sample.map((p) => (
             <div className="card person" key={`a${p.id}`}>
@@ -481,13 +661,14 @@ export function Customers({ r }: { r: Research }) {
       </section>
 
       <section className="section">
-        <h2>How long our customers live</h2>
+        <h2>How long pensioners might live</h2>
         <p className="sub">
-          Everything we promise depends on this. South African life expectancy fell sharply with HIV and recovered with treatment, so the past is a poor
+          Every pension depends on this. South African life expectancy fell sharply with HIV and recovered with treatment, so the past is a poor
           straight-line guide to the future.
         </p>
         {r.history && <History r={r} />}
         <FanPanel r={r} />
+        <LowerBound />
       </section>
     </>
   );
@@ -511,7 +692,7 @@ export function Investments({ r }: { r: Research }) {
     key: t,
     label: `${t} years`,
     values: [
-      { key: "l", label: "Our pensions", color: "var(--s1)", value: m.dv01[curve].liability[t] / 1e3 },
+      { key: "l", label: "The pensions", color: "var(--s1)", value: m.dv01[curve].liability[t] / 1e3 },
       { key: "d", label: "First portfolio (two bonds)", color: "var(--s2)", value: m.dv01[curve].portfolio[t] / 1e3 },
       ...(k ? [{ key: "k", label: "Rebalanced portfolio", color: "var(--s3)", value: k.dv01[curve].portfolio[t] / 1e3 }] : []),
     ],
@@ -520,24 +701,28 @@ export function Investments({ r }: { r: Research }) {
   return (
     <>
       <PageHead kicker="Investments" title="Where the money is">
-        Every rand we owe our customers is invested in South African government bonds and cash, chosen so their value moves in step with what we owe.
+        The money behind the pensions is in South African government bonds and a Treasury bill, chosen so their value moves in step with what is owed.
       </PageHead>
 
       {k && (
         <section className="card">
-          <h3>What we hold today</h3>
+          <h3>What the company holds today</h3>
           <p>
             {randM(m.assets.total)} across {holdings.length - 1} government bonds and a Treasury bill. Inflation-linked bonds pay the pensions that rise with
             inflation; fixed-rate bonds pay the level ones.
           </p>
           <HBars rows={holdings} />
+          <p className="note caveat">
+            All of it is lent to one borrower, the South African government. The regulator's formula charges nothing for that, so neither does this model, but a
+            sovereign downgrade or default would hit every asset at once.
+          </p>
         </section>
       )}
 
       <section className="panel">
         <div className="panel-head">
           <div>
-            <h2 className="serif">Matching our promises, year by year</h2>
+            <h2 className="serif">Matching the pensions, point by point on the curve</h2>
             <p className="eyebrow">
               Value lost if {curve === "real" ? "inflation-linked" : "fixed-rate"} yields rise by 0.01% at one point on the curve, R thousand
             </p>
@@ -560,10 +745,10 @@ export function Investments({ r }: { r: Research }) {
             </span>
           ))}
         </div>
-        <BarChart label="Sensitivity of our pensions and of each bond portfolio to a 0.01% rise in yields at 5, 10, 20 and 30 years, R thousand" groups={groups} fmt={(x) => `R${num(x, 0)}k`} height={260} />
+        <BarChart label="Sensitivity of the pensions and of each bond portfolio to a 0.01% rise in yields at 5, 10, 20 and 30 years, R thousand" groups={groups} fmt={(x) => `R${num(x, 0)}k`} height={260} />
         <p className="note">
-          When interest rates move, the value of our pensions moves, and so must the bonds behind them. Our first portfolio held two bonds of each kind that matched the
-          pensions on average, but bunched all the risk around 10 years: R{num(d.portfolio["10"] / 1e3, 0)}k against our R{num(d.liability["10"] / 1e3, 0)}k,
+          When interest rates move, the value of the pensions moves, and so must the bonds behind them. My first portfolio held two bonds of each kind that matched the
+          pensions on average, but bunched all the risk around 10 years: R{num(d.portfolio["10"] / 1e3, 0)}k against the pensions' R{num(d.liability["10"] / 1e3, 0)}k,
           and nothing at 30 years against R{num(d.liability["30"] / 1e3, 0)}k. {k ? "The rebalanced portfolio matches the pensions at all four points, so a change in the shape of the curve no longer hits only one side." : ""}
         </p>
         <TableView>
@@ -615,7 +800,7 @@ export function Capital({ r }: { r: Research }) {
   const realWorst = (now.rate_losses?.["real down"] ?? 0) >= (now.rate_losses?.["real up"] ?? 0) ? "fall" : "rise";
   const nomWorst = (now.rate_losses?.["nominal up"] ?? 0) >= (now.rate_losses?.["nominal down"] ?? 0) ? "rise" : "fall";
   const stress: Bar[] = [
-    { key: "lon", name: "People live longer", note: "Pensioners' death rates 10% lower, falling faster", value: now.life.longevity, label: randM(now.life.longevity, 1), color: "var(--s1)" },
+    { key: "lon", name: "People live longer", note: "The regulator's test: pensioners' death rates 10% lower, and improving 1 point a year faster", value: now.life.longevity, label: randM(now.life.longevity, 1), color: "var(--s1)" },
     { key: "real", name: `Inflation-linked yields ${realWorst}`, note: "By about half to three quarters", value: loss("real down", "real up"), label: randM(loss("real down", "real up"), 1), color: "var(--s1)" },
     { key: "nom", name: `Fixed-rate yields ${nomWorst}`, note: "By 30% to 50% at most terms", value: loss("nominal up", "nominal down"), label: randM(loss("nominal up", "nominal down"), 1), color: "var(--s1)" },
     { key: "exp", name: "Costs rise", note: "Running costs 10% up, inflation 2 points up", value: now.life.expense, label: randM(now.life.expense, 1), color: "var(--s1)" },
@@ -627,9 +812,9 @@ export function Capital({ r }: { r: Research }) {
   const sum = stress.reduce((a, x) => a + x.value, 0);
   return (
     <>
-      <PageHead kicker="Capital" title="Can we keep our promises?">
-        The Prudential Authority asks every insurer to hold enough capital to survive a 1-in-200 year: the solvency capital requirement. Our cover is the
-        capital we hold divided by that requirement. It needs to be at least 100%.
+      <PageHead kicker="Capital" title="Is there enough capital?">
+        The Prudential Authority asks every insurer to hold enough capital to survive a 1-in-200 year: the solvency capital requirement. Solvency cover is the
+        capital held divided by that requirement, and it has to be at least 100%.
       </PageHead>
 
       <div className="grid three">
@@ -637,42 +822,38 @@ export function Capital({ r }: { r: Research }) {
           {now.cover >= 1 ? <Pill kind="good">Meets the requirement</Pill> : <Pill kind="bad">Below the requirement</Pill>}
         </Stat>
         <Stat label="Capital required" value={randM(now.scr)} sub="To survive a 1-in-200 year" />
-        <Stat label="Capital we hold" value={randM(now.own_funds)} sub={`${coverPct(median)} cover, the life industry's typical level, would need ${randM(now.scr * median)}`} />
+        <Stat label="Capital held" value={randM(now.own_funds)} sub={`${coverPct(median)} cover, the life industry's typical level, would need ${randM(now.scr * median)}`} />
       </div>
 
       <section className="panel">
         <div className="panel-head">
           <div>
-            <h2 className="serif">How we invest decides whether we pass</h2>
+            <h2 className="serif">How the money is invested decides whether it passes</h2>
             <p className="eyebrow">Solvency cover on the same {randM(m.own_funds)} of capital, by how the money is invested</p>
           </div>
         </div>
         <HBars rows={strategies} max={Math.max(1.3, ...strategies.map((s) => s.value))} marker={1} markerLabel="The line marks 100%, the regulator's minimum." />
         <p className="note">
-          With everything in cash, a fall in interest rates would raise the value of our pensions with nothing to offset it, and we would need almost three
-          times our capital. Our first portfolio fixed most of that, but not the far end of the curve.{" "}
-          {k ? `Spreading the bonds across 5 to 30 years took us over the line without raising a rand.` : ""}
+          With everything in cash, a fall in interest rates would raise the value of the pensions with nothing to offset it: the interest-rate charge is{" "}
+          {randM(u.market)} and the requirement {randM(u.scr)}, almost three times the capital. The first portfolio cut that charge to {randM(m.market)}, but
+          left the far end of the curve open.{" "}
+          {k ? `Spreading the bonds across 5 to 30 years cut it to ${randM(k.market)}, and took the same capital over the line.` : ""}
         </p>
       </section>
 
       <section className="panel">
         <div className="panel-head">
           <div>
-            <h2 className="serif">What we hold capital against</h2>
+            <h2 className="serif">What the capital is held against</h2>
             <p className="eyebrow">Loss in each of the regulator's stress tests, R million</p>
           </div>
         </div>
         <HBars rows={stress} />
         <p className="note">
           Taken one at a time these losses add up to {randM(sum)}. They would not all happen in the same year, so the regulator's formula combines them into a
-          requirement of {randM(now.scr)}. People living longer is by far our biggest risk: it is {pct(now.life.longevity / sum, 0)} of the total, because our
-          pensions are paid for as long as people live. The funeral business barely registers. It is profitable, so its main risk is customers leaving.
+          requirement of {randM(now.scr)}. People living longer is by far the biggest risk, {randM(now.life.longevity)} on its own, because the pensions are
+          paid for as long as people live. The funeral business barely registers. It is profitable, so its main risk is customers leaving.
         </p>
-        <div className="callout">
-          <strong>What we would do next</strong>
-          Our bonds now match our pensions closely, so the remaining risk is mostly longevity. The usual next step is to reinsure part of it. We have not
-          modelled that yet.
-        </div>
         <TableView>
           <table>
             <thead>
@@ -699,7 +880,53 @@ export function Capital({ r }: { r: Research }) {
           </table>
         </TableView>
       </section>
+
+      <AnnuitantSensitivity v={v} />
     </>
+  );
+}
+
+/** v3's annuitant mortality sensitivity, on the first portfolio, where it was run. */
+function AnnuitantSensitivity({ v }: { v: NonNullable<Research["v3"]> }) {
+  const rows = [
+    { adj: 0.6, s: v.sensitivities["annuitant 0.6"] },
+    { adj: 0.7, s: v.main },
+    { adj: 0.8, s: v.sensitivities["annuitant 0.8"] },
+  ].filter((x) => x.s);
+  return (
+    <section className="panel">
+      <h2 className="serif">The assumption behind it all</h2>
+      <p className="note">
+        People who buy pensions live longer than the population. I assumed their death rates are 70% of everyone's. It is a round number I chose, not one fitted
+        to South African pensioners, since no such data is public. Ten points either way moves what is owed by about R200m and cover by about 5 points. These
+        rows are on the first portfolio, where the sensitivity was run, so cover is lower than today's.
+      </p>
+      <div className="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Pensioners' death rates, share of everyone's</th>
+              <th className="num">Owed to customers</th>
+              <th className="num">Capital required</th>
+              <th className="num">Solvency cover</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map(({ adj, s }) => (
+              <tr key={adj}>
+                <td>
+                  {pct(adj, 0)}
+                  {adj === 0.7 ? " (used everywhere)" : ""}
+                </td>
+                <td className="num">{randM(s.bel.total)}</td>
+                <td className="num">{randM(s.scr)}</td>
+                <td className="num">{coverPct(s.cover)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
   );
 }
 
@@ -720,15 +947,27 @@ function Disclose({ title, sub, children }: { title: string; sub: string; childr
   );
 }
 
+const Commit = ({ hash, when }: { hash: string; when: string }) => (
+  <a href={`${REPO}/commit/${hash}`} target="_blank" rel="noreferrer">
+    <code>{hash.slice(0, 7)}</code>, {when}
+  </a>
+);
+
+const Frozen = ({ hash, when }: { hash: string; when: string }) => (
+  <a href={`${REPO}/commit/${hash}`} target="_blank" rel="noreferrer">
+    Frozen {when} (<code>{hash.slice(0, 7)}</code>)
+  </a>
+);
+
 export function Built({ r }: { r: Research }) {
   const t = r.backtest.tests;
   const v2 = r.v2, v3 = r.v3;
   const both = (x: Record<Sex, boolean>) => SEXES.map((s) => <Verdict key={s} pass={x[s]} who={SEX_LABEL[s]} />);
-  const checks: { claim: string; plain: string; verdicts: ReactNode }[] = [
+  const checks: { claim: string; plain: string; verdicts: ReactNode; code?: boolean }[] = [
     { claim: "Death rates keep improving", plain: "The forecast beat a no-improvement baseline on 2017 to 2019.", verdicts: both(t.P1) },
     { claim: "The HIV years are handled", plain: "Fitting from 2006, after HIV deaths peaked, beat fitting from 1997.", verdicts: both(t.P2) },
     {
-      claim: "The forecast ranges are honest",
+      claim: "The forecast ranges are wide enough",
       plain: "The 95% ranges were meant to catch at least 90% of what actually happened. They caught fewer, so every pension range here is a lower bound: the true uncertainty is wider.",
       verdicts: both(t.P3),
     },
@@ -751,9 +990,13 @@ export function Built({ r }: { r: Research }) {
   }
   if (v3) {
     checks.push(
-      { claim: "The valuation engine is right", plain: "A simple month-by-month calculation agrees with the engine to better than one part in a trillion, under every stress.", verdicts: <Verdict pass={v3.checks.K1.pass} /> },
-      { claim: "Matching cuts interest-rate risk below a quarter", plain: `The first portfolio cut it to ${f2(v3.checks.K3.ratio)} of the unmatched risk.`, verdicts: <Verdict pass={v3.checks.K3.pass} /> },
-      { claim: "Longevity is the largest risk", plain: "As expected for a pension book.", verdicts: <Verdict pass={v3.checks.K4.pass} /> },
+      { claim: "The valuation engine is right", plain: "A simple month-by-month calculation agrees with the engine to better than one part in a trillion, under every stress.", verdicts: <Verdict pass={v3.checks.K1.pass} />, code: true },
+      {
+        claim: "Matching cuts the interest-rate charge below a quarter",
+        plain: `The first portfolio cut it from ${randM(v3.unmatched.market)} with everything in cash to ${randM(v3.main.market)}.`,
+        verdicts: <Verdict pass={v3.checks.K3.pass} />,
+      },
+      { claim: "Longevity is the largest risk", plain: "A sense check: for a pension book it could hardly come out otherwise.", verdicts: <Verdict pass={v3.checks.K4.pass} />, code: true },
     );
     if (v3.key_rate)
       checks.push({
@@ -770,15 +1013,16 @@ export function Built({ r }: { r: Research }) {
         claim: "The projection adds up",
         plain: "Each year's cash flows and the roll-forward of the accounts reconcile with the valuations at either end, to rounding.",
         verdicts: <Verdict pass={v4.checks.R1.pass && v4.checks.R2.pass} />,
+        code: true,
       },
       {
         claim: "Simulated rates move like real ones",
-        plain: "A year's change in the 10-year yield across the futures is within a third of its spread since 2011. The model as first written failed this for inflation-linked bonds, and was changed before the projection was run.",
+        plain: `A year's change in the 10-year yield across the futures is within a third of its spread since 2011. Fixed-rate passes at ${num(v4.checks.E1.nominal.ratio, 2)} against a limit of 1.33, only just. The model as first written failed this for inflation-linked bonds; the change was committed before anything was projected.`,
         verdicts: (["real", "nominal"] as const).map((k) => <Verdict key={k} pass={v4.checks.E1[k].pass} who={k === "real" ? "Inflation-linked" : "Fixed-rate"} />),
       },
       {
         claim: "Cover stays above 100% in 95% of futures",
-        plain: `It does in ${pct(v4.checks.A1.share_covered, 0)}. The bonds match the pensions, not the regulator's extra amounts.`,
+        plain: `It does in ${pct(v4.checks.A1.share_covered, 0)}. The bonds match the pensions, not the risk margin or the capital requirement.`,
         verdicts: <Verdict pass={v4.checks.A1.pass} />,
       },
       {
@@ -790,9 +1034,9 @@ export function Built({ r }: { r: Research }) {
   }
   return (
     <>
-      <PageHead kicker="How it's built" title="The work behind the numbers">
-        Mdingi Life is a portfolio project by Sbusiso Mdingi. For each part, the rules, tests and pass marks were written down and committed before any
-        result was seen. The results are reported as they came out, failures included.
+      <PageHead kicker="Methods" title="Methods and limitations">
+        I built this in four parts. For each, I wrote down the method, the tests and the pass marks, and committed them before running anything. Later changes
+        are dated and committed before the run they affect. Each card links the commit it was frozen at.
       </PageHead>
 
       <div className="grid two">
@@ -812,7 +1056,8 @@ export function Built({ r }: { r: Research }) {
             ·{" "}
             <a href={doc("RESULTS.md")} target="_blank" rel="noreferrer">
               Results
-            </a>
+            </a>{" "}
+            · <Frozen hash="6335c9c5c418" when="25 Oct 2026, 22:02" />
           </p>
         </div>
         <div className="card">
@@ -830,7 +1075,8 @@ export function Built({ r }: { r: Research }) {
             ·{" "}
             <a href={doc("RESULTS_v2.md")} target="_blank" rel="noreferrer">
               Results
-            </a>
+            </a>{" "}
+            · <Frozen hash="cc4c12514ee1" when="26 Oct 2026, 06:22" />
           </p>
         </div>
         <div className="card">
@@ -840,7 +1086,7 @@ export function Built({ r }: { r: Research }) {
               <path d="M9 12l2 2 4-4" />
             </svg>
           </div>
-          <h3>Testing our capital</h3>
+          <h3>Testing the capital</h3>
           <p>The Prudential Authority's standard formula for solvency (SAM), applied to an invented book of pensions and funeral policies.</p>
           <p>
             <a href={doc("PROTOCOL_v3.md")} target="_blank" rel="noreferrer">
@@ -849,7 +1095,8 @@ export function Built({ r }: { r: Research }) {
             ·{" "}
             <a href={doc("RESULTS_v3.md")} target="_blank" rel="noreferrer">
               Results
-            </a>
+            </a>{" "}
+            · <Frozen hash="545ba7193b24" when="26 Oct 2026, 10:21" />
           </p>
         </div>
         <div className="card">
@@ -867,23 +1114,100 @@ export function Built({ r }: { r: Research }) {
             ·{" "}
             <a href={doc("RESULTS_v4.md")} target="_blank" rel="noreferrer">
               Results
-            </a>
+            </a>{" "}
+            · <Frozen hash="fedf29aeeebc" when="26 Oct 2026, 11:49" />
           </p>
         </div>
       </div>
 
       <section className="section">
-        <h2>The checks, and how they came out</h2>
-        <p className="sub">Each was set before the result it checks.</p>
+        <h2>The tests, and how they came out</h2>
+        <p className="sub">Each was set before the result it checks. These could have gone either way.</p>
         <div className="card">
           <ul className="checks">
-            {checks.map((c) => (
+            {checks.filter((c) => !c.code).map((c) => (
               <li key={c.claim}>
                 <strong>{c.claim}</strong>
                 <span className="verdicts">{c.verdicts}</span>
                 <p>{c.plain}</p>
               </li>
             ))}
+          </ul>
+        </div>
+        <h3 className="subhead">Checks on the code, not the model</h3>
+        <p className="sub">These confirm the arithmetic or a result that was all but certain. They are not evidence the model is right.</p>
+        <div className="card">
+          <ul className="checks">
+            {checks.filter((c) => c.code).map((c) => (
+              <li key={c.claim}>
+                <strong>{c.claim}</strong>
+                <span className="verdicts">{c.verdicts}</span>
+                <p>{c.plain}</p>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </section>
+
+      <section className="section">
+        <h2>Changes after freezing</h2>
+        <div className="card">
+          <ul className="method">
+            <li>
+              <strong>Key-rate matching (v3)</strong>
+              The first portfolio left cover below 100%. I wrote the rebalancing up at{" "}
+              <Commit hash="7017b9f" when="10:58" /> and ran it at <Commit hash="202232b" when="11:09" />.
+            </li>
+            <li>
+              <strong>Two factors a curve (v4)</strong>
+              The frozen three-factor rate model failed its own check. The two-factor version was committed at <Commit hash="ce1ad56" when="12:08" />, and the
+              projection results at <Commit hash="d50d59b" when="13:55" />. Its fixed-rate check, 1.32 against 1.33, was first seen in that run. The frozen model's
+              results are reported too.
+            </li>
+            <li>
+              <strong>Starting capital (v4)</strong>
+              The capital levels and the rule for investing the extra were written at <Commit hash="28e4b67" when="14:51" />, before any level was run.
+            </li>
+          </ul>
+        </div>
+      </section>
+
+      <section className="section">
+        <h2>Limitations</h2>
+        <div className="card">
+          <ul className="method">
+            <li>
+              <strong>The customers are invented</strong>
+              Seeded random draws, in shapes I chose. A real book would differ in ages, sizes and mix.
+            </li>
+            <li>
+              <strong>The pensioners' death rates are assumed</strong>
+              70% of the population's, a round number, not fitted to South African pensioners. The Capital page shows how much it matters.
+            </li>
+            <li>
+              <strong>Ranges are too narrow</strong>
+              The mortality forecast's 95% ranges caught fewer outcomes than they should have, for both sexes. Read every range here as a lower bound.
+            </li>
+            <li>
+              <strong>The backtests flatter the models</strong>
+              Each holdout period was short and was also used to choose between models, so the scores are likely better than out-of-sample performance would be.
+            </li>
+            <li>
+              <strong>Fixed-rate yields fit poorly</strong>
+              The fixed-rate curve missed the 0.25% auction-yield target. It drives the level pensions and the funeral discounting.
+            </li>
+            <li>
+              <strong>One borrower</strong>
+              Every asset is South African government debt. The standard formula charges nothing for that concentration, and neither does this model.
+            </li>
+            <li>
+              <strong>The pensions are priced at cost</strong>
+              Prices carry no expense or profit loading, which is why the insurance profit is so small. Funeral premiums carry a 20% margin.
+            </li>
+            <li>
+              <strong>Simplified rules</strong>
+              No tax, the bond curves in place of the regulator's risk-free curve, and the other simplifications listed in each plan.
+            </li>
           </ul>
         </div>
       </section>
@@ -941,7 +1265,8 @@ export function Built({ r }: { r: Research }) {
             </li>
             <li>
               <strong>Fictional company</strong>
-              Mdingi Life does not exist and sells nothing. The customers are invented. Nothing here is a quote or actuarial advice.
+              Mdingi Life does not exist and sells nothing. The customers are invented; the data and rules are real, the results are a model's. Nothing here
+              is a quote or actuarial advice.
             </li>
           </ul>
         </div>
@@ -955,7 +1280,7 @@ export function Built({ r }: { r: Research }) {
 
 const STRESS: Record<string, { name: string; note: string }> = {
   "S1 Rates fall": { name: "Interest rates fall", note: "Both curves 1.5 points lower, then drifting back" },
-  "S2 Longevity": { name: "Pensioners live longer", note: "Their death rates 20% lower, for good" },
+  "S2 Longevity": { name: "Pensioners live longer", note: "Their death rates 20% lower for good: my own test, harsher than the regulator's 10%" },
   "S3 Pandemic year": { name: "A pandemic year", note: "Deaths as in 2021 against 2019, for one year" },
   "S4 Lapse wave": { name: "Customers leave", note: "30% of funeral policies cancelled at once" },
   "S5 All at once": { name: "All three at once", note: "Rates fall, a pandemic year and customers leave" },
@@ -984,25 +1309,30 @@ export function Future({ r }: { r: Research }) {
   const m = (x: number[]) => x.map((y) => y / 1e6);
   return (
     <>
-      <PageHead kicker="The next five years" title="What could happen to us">
-        A once-a-year look ahead, as the regulator asks of every insurer: a thousand possible paths for interest rates and inflation over five years, and five
-        named disasters, each run through our customers, our bonds and our capital, year by year.
+      <PageHead kicker="The next five years" title="Does the cover hold up?">
+        A look five years ahead, of the kind the regulator asks every insurer for: a thousand possible paths for interest rates and inflation, and five named
+        disasters, each run through the customers, the bonds and the capital, year by year.
       </PageHead>
 
       <div className="grid three">
         <Stat label="Solvency cover in five years" value={coverPct(c["50"][5])} sub={`In the middle future, from ${coverPct(c["50"][0])} today`} good={c["50"][5] >= 1} />
-        <Stat label="Futures that stay above 100%" value={pct(s.A1.share_covered, 0)} sub="Every year for five years. Our target is 95%">
-          {s.A1.pass ? <Pill kind="good">Meets our target</Pill> : <Pill kind="bad">Misses our target</Pill>}
+        <Stat label="Futures that stay above 100%" value={pct(s.A1.share_covered, 0)} sub="Every year for five years, against the 95% I set beforehand">
+          {s.A1.pass ? <Pill kind="good">Meets the target</Pill> : <Pill kind="bad">Misses the target</Pill>}
         </Stat>
-        <Stat label="Disasters we survive" value={`${5 - failed.length} of 5`} sub="Above 100% every year, without raising capital">
-          {failed.length ? <Pill kind="bad">{failed.length} would need more capital</Pill> : <Pill kind="good">All of them</Pill>}
+        <Stat
+          label="Lowest cover if pensioners live longer"
+          value={coverPct(Math.min(...v.stresses["S2 Longevity"].cover))}
+          sub={`It would take ${randM(v.stresses["S2 Longevity"].capital_to_restore)} of new capital to get back to 100%`}
+          good={false}
+        >
+          {failed.length ? <Pill kind="bad">{failed.length} of 5 disasters go below 100%</Pill> : <Pill kind="good">Every disaster stays above 100%</Pill>}
         </Stat>
       </div>
 
       <section className="panel">
         <div className="panel-head">
           <div>
-            <h2 className="serif">Our solvency cover across a thousand futures</h2>
+            <h2 className="serif">Solvency cover across a thousand futures</h2>
             <p className="eyebrow">Capital held over capital required, at the end of each year from {longDate(v.valuation_date)}</p>
           </div>
         </div>
@@ -1027,10 +1357,15 @@ export function Future({ r }: { r: Research }) {
           height={300}
         />
         <p className="note">
-          If interest rates follow their expected path, our cover climbs from {coverPct(v.central[0].cover)} to {coverPct(v.central[5].cover)}: the business earns
-          more than the capital it ties up. But rates rarely do what is expected. In {pct(below, 0)} of the futures our cover dips below 100% at least once, against
-          a target of no more than 5%. The bonds match what we owe our pensioners, but not the extra amounts the regulator adds on top, so a fall in rates still
-          hurts.
+          If interest rates follow their expected path, cover climbs from {coverPct(v.central[0].cover)} to {coverPct(v.central[5].cover)}: the business earns
+          more than the capital it ties up. But rates rarely do what is expected. In {pct(below, 0)} of the futures cover dips below 100% at least once, against
+          a target of no more than 5%. The bonds match what is owed to pensioners, but not the risk margin and capital requirement the regulator adds on top, so a
+          fall in rates still hurts.
+        </p>
+        <p className="note caveat">
+          The rate model was fitted on 2011 to 2026 and judged on the same years, so these ranges are likely narrower than the real ones. With March to May 2020
+          left out of the fit, {pct(v.sensitivities.covid_excluded.A1.share_covered, 0)} of futures stay covered rather than {pct(s.A1.share_covered, 0)}: three
+          months of data move the answer that much.
         </p>
         <TableView>
           <table>
@@ -1064,7 +1399,7 @@ export function Future({ r }: { r: Research }) {
         <div className="panel-head">
           <div>
             <h2 className="serif">Where interest rates could go</h2>
-            <p className="eyebrow">The 10-year {rate === "nominal" ? "fixed-rate" : "inflation-linked"} government bond yield, each September and in our futures</p>
+            <p className="eyebrow">The 10-year {rate === "nominal" ? "fixed-rate" : "inflation-linked"} government bond yield, each September and in the modelled futures</p>
           </div>
           <Segmented
             label="Curve"
@@ -1096,7 +1431,7 @@ export function Future({ r }: { r: Research }) {
         />
         <p className="note">
           The futures come from a model of how the whole curve moved month by month since 2011, each curve reduced to a level and a slope. In a year, its rates
-          move about as much as they did in the past: {num(v.checks.E1[rate].ratio, 2)} times the historical spread, inside the 0.75 to 1.33 we set beforehand.
+          move about as much as they did in the past: {num(v.checks.E1[rate].ratio, 2)} times the historical spread, inside the 0.75 to 1.33 I set beforehand{rate === "nominal" ? ", though only just" : ""}.
           Its worst 1-in-200 fall over a year, {num(-v.esg.checks.E2[rate].scenario_q005 * 100, 1)} points, is close to the regulator's own rate shock at 10 years,{" "}
           {num(-v.esg.checks.E2[rate].sam_down_10y * 100, 1)} points.
         </p>
@@ -1111,15 +1446,16 @@ export function Future({ r }: { r: Research }) {
         </div>
         <HBars rows={stress} max={Math.max(1.5, ...stress.map((x) => x.value))} marker={1} markerLabel="The line marks 100%, the regulator's minimum." />
         <p className="note">
-          A pandemic year or a wave of cancellations we can absorb. A fall in interest rates takes us below 100% at once, and we recover within{" "}
+          A pandemic year or a wave of cancellations is absorbed. A fall in interest rates takes cover below 100% at once, and it recovers within{" "}
           {Math.max(...failed.filter(([k]) => k !== "S2 Longevity").map(([, x]) => x.cover.findIndex((y) => y >= 1)), 0)} years as rates drift back. Pensioners living
-          longer is the one we could not ride out: our pensions would cost {randM(v.stresses["S2 Longevity"].losses + v.stresses["S2 Longevity"].csm_used)} more,
-          and we would need {randM(v.stresses["S2 Longevity"].capital_to_restore)} of new capital to get back to 100%.
+          longer is the one the company could not ride out: the pensions would cost {randM(v.stresses["S2 Longevity"].losses + v.stresses["S2 Longevity"].csm_used)} more,
+          and it would take {randM(v.stresses["S2 Longevity"].capital_to_restore)} of new capital to get back to 100%. This is a harsher test than the
+          regulator's own longevity shock on the Capital page (death rates 10% lower and improving faster), which is what sets the capital requirement.
         </p>
         <div className="callout">
-          <strong>What we would do next</strong>
-          Longevity is the risk that sinks us, as the capital tests showed. Reinsuring part of it, and matching the regulator's extra amounts as well as the
-          pensions, are the two steps this points to. Neither is modelled yet.
+          <strong>What I would do next</strong>
+          Reinsure part of the longevity risk, which shrinks both the capital requirement and the risk margin, and hedge their sensitivity to rates as well as the
+          pensions'. Neither is modelled here.
         </div>
         <TableView>
           <table>
@@ -1154,10 +1490,12 @@ export function Future({ r }: { r: Research }) {
         </TableView>
       </section>
 
+      {v.capital && v.capital.levels.length > 1 && <CapitalCurve c={v.capital} />}
+
       <section className="panel">
         <div className="panel-head">
           <div>
-            <h2 className="serif">The profit we would report</h2>
+            <h2 className="serif">The profit it would report</h2>
             <p className="eyebrow">IFRS 17 profit each year if rates move as expected, R million</p>
           </div>
         </div>
@@ -1179,8 +1517,8 @@ export function Future({ r }: { r: Research }) {
           height={260}
         />
         <p className="note">
-          Accounts and solvency measure the same business differently. Under IFRS 17 the profit we expect from our policies is held back in a reserve, the
-          contractual service margin, and released as we provide cover: {randM(ifrs.csm[0])} today. Most of the profit is investment return, on our own capital as
+          Accounts and solvency measure the same business differently. Under IFRS 17 the profit expected from the policies is held back in a reserve, the
+          contractual service margin, and released as cover is provided: {randM(ifrs.csm[0])} today. Most of the profit is investment return, on the company's own capital as
           well as on the bonds behind the pensions. Across the thousand futures, profit in the first year ranges
           from {randM(s.profit["5"][0])} to {randM(s.profit["95"][0])}, nine times in ten.
         </p>
@@ -1210,5 +1548,80 @@ export function Future({ r }: { r: Research }) {
         </TableView>
       </section>
     </>
+  );
+}
+
+/** The added runs: starting capital against the share of futures covered throughout. */
+function CapitalCurve({ c }: { c: NonNullable<NonNullable<Research["v4"]>["capital"]> }) {
+  const L = c.levels;
+  const xs = L.map((x) => x.own_funds / 1e6);
+  const hit = L.find((x) => x.share_covered >= 0.95);
+  const names = Object.keys(L[0].stresses);
+  return (
+    <section className="panel">
+      <div className="panel-head">
+        <div>
+          <h2 className="serif">How much capital would be enough?</h2>
+          <p className="eyebrow">Share of the 1,000 futures above 100% at every year-end, by starting capital. Rule: {c.rule}.</p>
+        </div>
+      </div>
+      <Legend
+        items={[
+          { label: "Futures covered throughout", color: "var(--s1)" },
+          { label: "The 95% target", color: "var(--muted-foreground)", kind: "dash" },
+        ]}
+      />
+      <YearChart
+        label={`Share of futures covered at every year-end against starting capital from R${xs[0]}m to R${xs[xs.length - 1]}m; ${c.rule}`}
+        series={[
+          { key: "t", label: "The 95% target", color: "var(--muted-foreground)", xs, ys: xs.map(() => 0.95), dash: true },
+          { key: "s", label: "Futures covered throughout", color: "var(--s1)", xs, ys: L.map((x) => x.share_covered) },
+        ]}
+        points={[{ key: "p", label: "Run", color: "var(--s1)", xs, ys: L.map((x) => x.share_covered) }]}
+        fmt={(x) => pct(x, 0)}
+        xFmt={(x) => `R${num(x, 0)}m`}
+        height={280}
+      />
+      <p className="note">
+        I ran the same thousand futures and five disasters again with more starting capital, each extra rand invested in the same mix of bonds and bills as
+        today's assets.{" "}
+        {hit
+          ? `The 95% target is first met at ${randM(hit.own_funds)}, a cover of ${coverPct(hit.cover)} today.`
+          : `Even ${randM(L[L.length - 1].own_funds)} does not reach 95%.`}{" "}
+        Every point is a full run; the line between them is drawn, not modelled.
+      </p>
+      <div className="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Starting capital</th>
+              <th className="num">Capital required</th>
+              <th className="num">Cover today</th>
+              <th className="num">Futures covered throughout</th>
+              {names.map((n) => (
+                <th key={n} className="num">
+                  Lowest, {(STRESS[n]?.name ?? n).toLowerCase()}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {L.map((x) => (
+              <tr key={x.own_funds}>
+                <td>{randM(x.own_funds)}</td>
+                <td className="num">{randM(x.scr)}</td>
+                <td className="num">{coverPct(x.cover)}</td>
+                <td className="num">{pct(x.share_covered, 1)}</td>
+                {names.map((n) => (
+                  <td key={n} className="num">
+                    {coverPct(x.stresses[n])}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
   );
 }

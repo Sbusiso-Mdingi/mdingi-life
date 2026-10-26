@@ -361,8 +361,7 @@ h3 {
   color: var(--muted-foreground);
 }
 .kpis {
-  margin-top: -36px;
-  padding: 0 20px;
+  margin-top: 24px;
   position: relative;
   z-index: 2;
 }
@@ -1075,9 +1074,6 @@ tr.total td {
   .hero {
     padding: 32px 24px 56px;
   }
-  .kpis {
-    padding: 0 8px;
-  }
   .quote {
     grid-template-columns: 1fr;
   }
@@ -1096,4 +1092,83 @@ tr.total td {
   .panel {
     padding: 20px 18px;
   }
+}
+
+/* The disclaimer, kept near the top of the pages people land on. */
+.fiction {
+  border-left: 3px solid var(--gold);
+  background: var(--surface);
+  border-radius: 8px;
+  padding: 10px 14px;
+  font-size: 14px;
+  margin: 0 0 18px;
+}
+.hero .fiction {
+  background: rgb(255 255 255 / 0.1);
+  border-left-color: rgb(255 255 255 / 0.6);
+  font-size: 14.5px;
+  max-width: 680px;
+  margin-top: 20px;
+  opacity: 1;
+  position: relative;
+  z-index: 1;
+}
+
+/* The one-screen findings list on the overview. */
+.findings {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0;
+}
+.findings li {
+  display: grid;
+  grid-template-columns: minmax(170px, 230px) 1fr;
+  gap: 18px;
+  padding: 16px 0;
+  border-top: 1px solid var(--border);
+  align-items: baseline;
+}
+.findings li:first-child {
+  border-top: 0;
+  padding-top: 4px;
+}
+.findings .figure {
+  font-size: 26px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+.findings p {
+  margin: 0;
+}
+.findings .link {
+  background: none;
+  border: 0;
+  padding: 0;
+  color: var(--primary);
+  font-weight: 700;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 700;
+}
+@media (max-width: 640px) {
+  .findings li {
+    grid-template-columns: 1fr;
+    gap: 6px;
+  }
+}
+
+.note.caveat {
+  border-left: 3px solid var(--gold);
+  padding-left: 12px;
+}
+
+.section .subhead {
+  margin-top: 28px;
+  font-size: 1.05rem;
 }

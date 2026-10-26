@@ -5,12 +5,12 @@ import { REPO } from "./ui";
 
 const TABS: { id: Tab; label: string }[] = [
   { id: "overview", label: "Overview" },
-  { id: "quote", label: "Get a quote" },
-  { id: "customers", label: "Our customers" },
+  { id: "quote", label: "Pricing" },
+  { id: "customers", label: "Customers" },
   { id: "investments", label: "Investments" },
   { id: "capital", label: "Capital" },
   { id: "future", label: "Next five years" },
-  { id: "built", label: "How it's built" },
+  { id: "built", label: "Methods" },
 ];
 const fromHash = (): Tab => {
   const h = location.hash.slice(1) as Tab;
@@ -79,7 +79,7 @@ export function App({ embedded }: { embedded: boolean }) {
         )}
       </main>
       <footer className="footer">
-        Mdingi Life is a fictional company and sells nothing. The data and the methods are real. A portfolio project by Sbusiso Mdingi
+        Mdingi Life is fictional and sells nothing. The data and the regulator's rules are real; the customers are invented. A portfolio project by Sbusiso Mdingi
         {embedded ? "." : (
           <>
             {" "}

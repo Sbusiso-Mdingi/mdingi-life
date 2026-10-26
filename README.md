@@ -1,6 +1,6 @@
 # Mdingi Life
 
-A fictional South African life insurer, modelled end to end: its policies, its assets, its regulatory balance sheet and its solvency cover, recalculated from market data every day. The company is invented. The mortality, the yield curve and the methods are real, and every simplification of SAM and IFRS 17 is listed where it is made.
+A fictional South African life insurer, modelled end to end: its policies, its assets, its regulatory balance sheet and its solvency cover, valued at 25 September 2026. The company and its customers are invented, drawn at random from a fixed seed (`research/book_v3.py`). The deaths data, the bond auctions and the capital rules are real, and every simplification of SAM and IFRS 17 is listed where it is made. Live site: https://mdingi-life.azurewebsites.net
 
 Built in releases. Each one stands on its own and feeds the next.
 
@@ -37,7 +37,7 @@ research/     fetch, coverage, backtest, annuities, export; PROTOCOL.md and RESU
               scenarios_v4, projection_v4; PROTOCOL_v4.md and RESULTS_v4.md
 tests/        every model and formula on simulated data with known answers
 service/      FastAPI app serving the results
-dashboard/    Vite front end: the company's site (overview, quotes, customers, investments, capital, the next five years, how it's built)
+dashboard/    Vite front end: the company's site (overview, pricing, customers, investments, capital, the next five years, methods and limitations)
 data/book/    v3's invented policies
 data/raw/     source files as downloaded
 ```
