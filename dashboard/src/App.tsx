@@ -10,6 +10,11 @@ const RATES = [0.02, 0.04, 0.06];
 const ADJS = [0.6, 0.7, 0.8];
 const REPO = "https://github.com/Sbusiso-Mdingi/mdingi-life";
 const MODEL_NAMES: Record<string, string> = { B0: "No improvement", LC: "Lee-Carter", CBD: "Cairns-Blake-Dowd", RH: "Renshaw-Haberman" };
+const WINDOW_START: Record<string, number> = { full: 1997, "post-peak": 2006 };
+const modelLabel = (k: string) => {
+  const [name, ...rest] = k.split(" ");
+  return `${MODEL_NAMES[name] ?? name}, ${rest.join(" ") === "full" ? "from 1997" : "from 2006"}`;
+};
 
 const find = (prices: Price[], age: number, rate: number, adj: number) =>
   prices.find((p) => p.age === age && Math.abs(p.rate - rate) < 1e-9 && Math.abs(p.adj - adj) < 1e-9)!;
@@ -129,7 +134,7 @@ export function App({ embedded }: { embedded: boolean }) {
             <i className="dot" />
             Protocol {r.protocol}
           </span>
-          <span>Data: UN WPP 2024</span>
+          <span>{r.source === "statssa" ? "Data: Stats SA registered deaths" : "Data: UN WPP 2024"}</span>
           <span>Forecast from {r.annuities.Male.jump_off}</span>
         </div>
       </header>
@@ -148,13 +153,15 @@ export function App({ embedded }: { embedded: boolean }) {
       </section>
       <p className="note">
         Width of the 95% interval of the price of a life annuity bought at 65, as a share of the median: 1 a year paid monthly, 4% discount rate,
-        annuitant factor 0.7. Mortality uncertainty alone moves the price across a range about 14% wide.
+        annuitant factor 0.7. Mortality uncertainty alone moves the price across a range about {Math.round((at65("Male").width_pct + at65("Female").width_pct) / 2)}%
+        wide{SEXES.some((s) => !p3[s]) ? ", and the true range is wider" : ""}.
       </p>
 
       {r.history && <History r={r} />}
       <FanPanel r={r} />
       <Backtest r={r} />
       <Explorer r={r} />
+      {r.compare && <Sources r={r} />}
       <Sensitivity r={r} />
       <Method r={r} />
 
@@ -275,11 +282,21 @@ function FanPanel({ r }: { r: Research }) {
   }
   const end = (s: Sex, k: "median" | "lo" | "hi") => r.fan[s][k][r.fan[s][k].length - 1];
   const lastYear = r.fan.Male.years[r.fan.Male.years.length - 1];
+  const [name, window] = r.fan.Male.model.split(" ");
+  const sameModel = SEXES.every((s) => r.fan[s].model === r.fan.Male.model);
+  // Covid years inside the forecast that fell below the band, for men and women.
+  const below = (s: Sex) =>
+    r.fan[s].covid.filter((y) => {
+      const i = r.fan[s].years.indexOf(y);
+      return i >= 0 && r.fan[s].observed[r.fan[s].observed_years.indexOf(y)] < r.fan[s].lo[i];
+    });
   return (
     <section className="panel" id="fan">
       <div className="panel-head">
         <div>
-          <p className="eyebrow">Forecast · {MODEL_NAMES.CBD}, fitted 1997 to {jump}</p>
+          <p className="eyebrow">
+            Forecast · {sameModel ? MODEL_NAMES[name] : "chosen model by sex"}, fitted {WINDOW_START[window] ?? 1997} to {jump}
+          </p>
           <h2 className="serif">Life expectancy at 65, forecast to {lastYear}</h2>
         </div>
       </div>
@@ -300,13 +317,17 @@ function FanPanel({ r }: { r: Research }) {
         height={320}
         notes={[
           { x0: 2020, x1: 2022, label: "Covid-19, left out of the fit", short: "Covid", row: 0, anchor: "end" },
-          { x0: jump, label: `Forecast from ${jump}`, short: "Forecast", row: 0, anchor: "start" },
+          { x0: jump, label: `Forecast from ${jump}`, short: "Forecast", row: 1, anchor: "end" },
         ]}
       />
       <p className="note">
         By {lastYear} the median is {f1(end("Male", "median"))} years for men and {f1(end("Female", "median"))} for women, with 95% bands of{" "}
         {f1(end("Male", "lo"))} to {f1(end("Male", "hi"))} and {f1(end("Female", "lo"))} to {f1(end("Female", "hi"))}. The bands come from 5,000
-        simulated paths over 500 bootstrap refits. The 2021 Covid point falls far below anything the model was asked to expect.
+        simulated paths over 500 bootstrap refits.
+        {r.source === "statssa" ? " Observed life expectancy here comes from registered deaths, so it sits above WPP's life tables wherever deaths go unregistered." : ""}
+        {SEXES.some((s) => below(s).length > 0)
+          ? ` Covid years fell below the band (men: ${below("Male").join(", ") || "none"}; women: ${below("Female").join(", ") || "none"}): a pandemic is not something the model was asked to expect.`
+          : ""}
       </p>
       <TableView>
         <table>
@@ -387,7 +408,13 @@ function Backtest({ r }: { r: Research }) {
     {
       id: "P3",
       claim: "Honest intervals: 95% bands catch at least 90% of observed rates",
-      plain: `The bands caught ${pct(cov("Male"), 0)} of rates for men and ${pct(cov("Female"), 0)} for women. Men's price intervals are therefore lower bounds. Women pass exactly at the line.`,
+      plain: `The bands caught ${pct(cov("Male"), 0)} of rates for men and ${pct(cov("Female"), 0)} for women. ${
+        t.P3.Male && t.P3.Female
+          ? "Both pass."
+          : !t.P3.Male && !t.P3.Female
+            ? "Both fail, so every price interval here is reported as a lower bound."
+            : `${t.P3.Male ? "Women's" : "Men's"} price intervals are therefore lower bounds.`
+      }`,
     },
     {
       id: "P4",
@@ -471,8 +498,8 @@ function Backtest({ r }: { r: Research }) {
       </div>
       <p className="note">
         Lower deviance is a closer fit to observed deaths. Coverage is the share of observed rates inside the 95% band; it should be near 95%.
-        Annuity error is the average miss on the price at 65. {MODEL_NAMES.CBD} wins on all three for both sexes; {MODEL_NAMES.LC}'s
-        bands caught only {pct(v[lc].Male.coverage, 0)} and {pct(v[lc].Female.coverage, 0)}.
+        Annuity error is the average miss on the price at 65. The protocol chooses on deviance alone: {SEXES.map((s) => `${modelLabel(chosen[s])} for ${SEX_LABEL[s].toLowerCase()}`).join(", ")}.{" "}
+        {MODEL_NAMES.LC}'s bands caught only {pct(v[lc].Male.coverage, 0)} and {pct(v[lc].Female.coverage, 0)}.
       </p>
     </section>
   );
@@ -551,8 +578,8 @@ function Explorer({ r }: { r: Research }) {
         <IntervalChart label={`Annuity price by sex and age at ${pct(rate, 0)} and annuitant factor ${adj.toFixed(1)}`} rows={rows} fmt={f2} groups={2} />
       </div>
       <p className="note">
-        The annuitant factor scales population death rates down, because people who buy annuities live longer. The relative width grows with age:
-        an older buyer's price rests on fewer, nearer years, where the model's age-slope uncertainty bites hardest.
+        The annuitant factor scales population death rates down, because people who buy annuities live longer. The interval carries parameter and
+        process uncertainty within the chosen model, not the choice of model: see the model risk panel below.
       </p>
       <TableView>
         <table>
@@ -591,6 +618,155 @@ function Explorer({ r }: { r: Research }) {
   );
 }
 
+const RUN_SHORT: Record<string, string> = {
+  wpp: "WPP, CBD, 2023",
+  wpp_cbd_2019: "WPP, CBD, 2019",
+  wpp_rh_2019: "WPP, RH, 2019",
+  statssa_scaled: "Stats SA, scaled",
+  statssa: "Stats SA",
+};
+
+function Sources({ r }: { r: Research }) {
+  const c = r.compare!;
+  const [view, setView] = useState<"deaths" | "population">("deaths");
+  const runs = c.runs;
+  const at = (k: string, s: Sex) => find(runs.find((x) => x.key === k)![s].prices, 65, 0.04, 0.7);
+  const has = (k: string) => runs.some((x) => x.key === k);
+  const rows: Interval[] = SEXES.flatMap((s) =>
+    runs.map((x) => {
+      const p = find(x[s].prices, 65, 0.04, 0.7);
+      return { key: `${s}${x.key}`, label: `${SEX_LABEL[s]} · ${RUN_SHORT[x.key] ?? x.key}${x.exploratory ? " †" : ""}`, color: COLOR[s], lo: p.lo, median: p.median, hi: p.hi, active: x.key === r.source };
+    }),
+  );
+  const gap = (k: string, s: Sex) => at(k, s).median / at("wpp", s).median - 1;
+  const t = view === "deaths" ? c.completeness : c.exposure;
+  const series: Series[] = SEXES.map((s) => ({ key: s, label: SEX_LABEL[s], color: COLOR[s], xs: t.years, ys: t[s] }));
+  return (
+    <section className="panel" id="sources">
+      <div className="panel-head">
+        <div>
+          <p className="eyebrow">Model risk · price at 65, 4%, factor 0.7</p>
+          <h2 className="serif">Choosing the model moves the price more than the interval admits</h2>
+        </div>
+      </div>
+      <Legend items={SEXES.map((s) => ({ label: SEX_LABEL[s], color: COLOR[s] }))} />
+      <IntervalChart label="Annuity price at 65 by data source and model, men and women" rows={rows} fmt={f2} groups={2} />
+      <p className="note">
+        The Stats SA run prices an annuity at 65 {pct(gap("statssa", "Male"), 0)} above the UN WPP run for men and {pct(gap("statssa", "Female"), 0)}{" "}
+        for women. Each row changes one thing from the row above.
+        {has("wpp_rh_2019") && has("wpp_cbd_2019")
+          ? ` On WPP's own deaths, ending the fit in 2019 adds ${pct(gap("wpp_cbd_2019", "Male"), 0)} and ${pct(gap("wpp_cbd_2019", "Female"), 0)}, and switching to ${MODEL_NAMES.RH} from 2006 takes the gap to ${pct(gap("wpp_rh_2019", "Male"), 0)} and ${pct(gap("wpp_rh_2019", "Female"), 0)}. Swapping in registered deaths, scaled for under-registration, then gives ${pct(gap("statssa_scaled", "Male"), 0)} and ${pct(gap("statssa_scaled", "Female"), 0)}. Most of the gap is the model and its window, not the deaths data, and no single model's 95% interval is wide enough to show it. Rows marked † are exploratory, outside the protocol.`
+          : ""}
+      </p>
+
+      <div className="panel-head" style={{ marginTop: 28 }}>
+        <div>
+          <p className="eyebrow">Two drifts, both making mortality look as if it improves faster</p>
+          <h3 className="serif">{view === "deaths" ? "Registered deaths as a share of WPP's, ages 50 to 89" : "WPP population over Stats SA's, ages 50 to 79"}</h3>
+        </div>
+        <Segmented
+          label="Check"
+          value={view}
+          onChange={setView}
+          options={[
+            { id: "deaths", label: "Deaths" },
+            { id: "population", label: "Population" },
+          ]}
+        />
+      </div>
+      <Legend items={SEXES.map((s) => ({ label: SEX_LABEL[s], color: COLOR[s] }))} />
+      <YearChart
+        label={view === "deaths" ? "Registered deaths at 50 to 89 over WPP deaths by year and sex" : "WPP population at 50 to 79 over Stats SA P0302 by year and sex"}
+        series={series}
+        fmt={(v) => pct(v, 0)}
+        height={260}
+        notes={[{ x0: 2006, label: "Post-peak fit starts", short: "2006", row: 0, anchor: "end" }]}
+      />
+      <p className="note">
+        {view === "deaths"
+          ? "Registration peaked around 2003 to 2010 and fell after it. The post-peak fit starts at the top of that fall, so part of the improvement it sees is fewer deaths being registered. The sensitivity row scales each year's deaths back up to WPP's level."
+          : "WPP counts fewer people aged 50 to 79 than Stats SA until 2016, then catches up by 2020. Rates on WPP's population therefore fall faster over 2016 to 2019 than they would on Stats SA's. This is reported, not corrected: Stats SA single-age estimates were not available."}
+      </p>
+      <TableView>
+        <table>
+          <thead>
+            <tr>
+              <th>Run</th>
+              {SEXES.map((s) => (
+                <th key={s} className="num">
+                  {SEX_LABEL[s]}, 65
+                </th>
+              ))}
+              {SEXES.map((s) => (
+                <th key={s} className="num">
+                  {SEX_LABEL[s]}, vs WPP
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {runs.map((x) => (
+              <tr key={x.key} className={x.key === r.source ? "final" : undefined}>
+                <td>
+                  {x.label}
+                  {x.exploratory && <span className="tag">Exploratory</span>}
+                </td>
+                {SEXES.map((s) => (
+                  <td key={s} className="num">
+                    {f2(at(x.key, s).median)} [{f2(at(x.key, s).lo)}, {f2(at(x.key, s).hi)}]
+                  </td>
+                ))}
+                {SEXES.map((s) => (
+                  <td key={s} className="num">
+                    {x.key === "wpp" ? "base" : `${gap(x.key, s) >= 0 ? "+" : ""}${pct(gap(x.key, s))}`}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        <table style={{ marginTop: 16 }}>
+          <thead>
+            <tr>
+              <th>Year</th>
+              {SEXES.map((s) => (
+                <th key={s} className="num">
+                  {SEX_LABEL[s]}, deaths registered
+                </th>
+              ))}
+              {SEXES.map((s) => (
+                <th key={s} className="num">
+                  {SEX_LABEL[s]}, WPP / Stats SA population
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {c.completeness.years.map((y, i) => {
+              const j = c.exposure.years.indexOf(y);
+              return (
+                <tr key={y}>
+                  <td>{y}</td>
+                  {SEXES.map((s) => (
+                    <td key={s} className="num">
+                      {pct(c.completeness[s][i])}
+                    </td>
+                  ))}
+                  {SEXES.map((s) => (
+                    <td key={s} className="num">
+                      {j < 0 ? "n/a" : num(c.exposure[s][j], 3)}
+                    </td>
+                  ))}
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </TableView>
+    </section>
+  );
+}
+
 function Sensitivity({ r }: { r: Research }) {
   const rows: Interval[] = SEXES.flatMap((s) =>
     ADJS.map((a) => {
@@ -605,7 +781,9 @@ function Sensitivity({ r }: { r: Research }) {
       <div className="panel-head">
         <div>
           <p className="eyebrow">What would change this</p>
-          <h2 className="serif">The annuitant assumption matters as much as the model</h2>
+          <h2 className="serif">
+            The annuitant assumption {swing * 100 >= m(0.7).width_pct ? "moves the price more than the model interval does" : "matters as much as the model interval"}
+          </h2>
         </div>
       </div>
       <div>
@@ -625,15 +803,19 @@ function Sensitivity({ r }: { r: Research }) {
             <strong>The factor is an assumption</strong>
             No public South African annuitant experience is used. 0.6, 0.7 and 0.8 are shown side by side, not estimated.
           </p>
-          <p>
-            <strong>Smoothed data</strong>
-            These results run on UN WPP 2024, which are model estimates and smoother than registered deaths. Every fit here looks better than it
-            will on raw data.
-          </p>
-          <p>
-            <strong>Stats SA to follow</strong>
-            A rerun on Stats SA registered deaths will be added beside this one, not replace it.
-          </p>
+          {r.source === "statssa" ? (
+            <p>
+              <strong>A modelled population</strong>
+              Deaths are Stats SA registrations, but the population under them is UN WPP's: Stats SA's single-age estimates could not be obtained.
+              Both drift against each other over time; see the data panel above.
+            </p>
+          ) : (
+            <p>
+              <strong>Smoothed data</strong>
+              These results run on UN WPP 2024, which are model estimates and smoother than registered deaths. Every fit here looks better than it
+              will on raw data.
+            </p>
+          )}
           <p>
             <strong>Flat discount rate</strong>
             v1 discounts at a flat 2%, 4% or 6%. v2 replaces it with the fitted South African government bond curve.
@@ -704,8 +886,9 @@ function Method({ r }: { r: Research }) {
         </li>
         <li>
           <strong>Sources</strong>
-          United Nations, Population Division (2024), World Population Prospects 2024, CC BY 3.0 IGO. Statistics South Africa, P0309.3 and P0302,
-          via DataFirst: <span className="tag">To follow</span>
+          Statistics South Africa, Mortality and Causes of Death 1997 to 2022, unit records, distributed by DataFirst, University of Cape Town.
+          United Nations, Population Division (2024), World Population Prospects 2024, CC BY 3.0 IGO: population for every year, and the deaths
+          and life tables of the comparison run. Statistics South Africa, P0302 projections, for the population check.
         </li>
         <li>
           <strong>Fictional company</strong>

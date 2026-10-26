@@ -13,6 +13,9 @@ export type Fan = {
   covid: number[];
 };
 
+export type Run = { key: string; label: string; exploratory: boolean } & Record<Sex, { model: string; jump_off: number; prices: Price[] }>;
+export type BySex = { years: number[] } & Record<Sex, number[]>;
+
 export type Research = {
   source: string;
   protocol: string;
@@ -24,6 +27,7 @@ export type Research = {
   annuities: Record<Sex, { model: string; jump_off: number; prices: Price[] }>;
   fan: Record<Sex, Fan>;
   history?: { years: number[]; e0: Record<Sex, number[]>; e65: Record<Sex, number[]> };
+  compare?: { runs: Run[]; completeness: BySex; exposure: BySex };
 };
 
 export type Quote = Price & { sex: Sex; model: string; jump_off: number; lower_bound: boolean };

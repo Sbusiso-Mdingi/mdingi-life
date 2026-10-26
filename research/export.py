@@ -4,6 +4,9 @@ Also adds what the dashboard draws: life expectancy at birth and at 65 by year f
 of period life expectancy at 65 from the production fit (same model, window, bootstrap and seed offset style as
 annuities.py), with the observed series, Covid years included, to set against it.
 
+With --source statssa it also bundles the comparison with the WPP run: annuity prices from each run in COMPARE that
+exists, the completeness of registration and the WPP/Stats SA population check.
+
 Refuses to run until the protocol is frozen.
 """
 from __future__ import annotations
@@ -20,6 +23,28 @@ from mdingilife.protocol import require_frozen
 from research.backtest import AGES, COVID, OUT, SEED, WINDOWS
 
 FAN_TO, REFITS, PATHS = 2050, 500, 5000
+# Steps from the WPP run to the Stats SA run; each changes one thing. Exploratory ones are outside the protocol.
+COMPARE = [
+    ("wpp", "UN WPP deaths, CBD full, jump-off 2023", False),
+    ("wpp_cbd_2019", "Same, jump-off 2019", True),
+    ("wpp_rh_2019", "Same, RH post-peak", True),
+    ("statssa_scaled", "Registered deaths, scaled to WPP's level", False),
+    ("statssa", "Registered deaths, as registered", False),
+]
+
+
+def compare() -> dict:
+    runs = []
+    for key, label, exploratory in COMPARE:
+        f = OUT / f"annuities_{key}.json"
+        if f.exists():
+            a = json.loads(f.read_text())
+            runs.append({"key": key, "label": label, "exploratory": exploratory,
+                         **{s: {"model": a[s]["model"], "jump_off": a[s]["jump_off"], "prices": a[s]["prices"]}
+                            for s in data.SEXES}})
+    table = lambda name: (lambda t: {"years": t.index.tolist(), **{s: t[s].tolist() for s in data.SEXES}})(
+        pd.read_csv(OUT / name, index_col=0))
+    return {"runs": runs, "completeness": table("completeness.csv"), "exposure": table("exposure_check.csv")}
 
 
 def e65(log_m: np.ndarray, ages: np.ndarray) -> np.ndarray:
@@ -77,8 +102,9 @@ def main() -> None:
         fans[s] = {"model": bt["tests"]["chosen"][s]} | fan(r, name, window, rng)
     out = {"source": a.source, "protocol": frozen, "backtest": bt, "annuities": an, "rates": rates,
            "fan": fans}
-    if a.source == "wpp":
-        out["history"] = history()
+    out["history"] = history()
+    if a.source == "statssa":
+        out["compare"] = compare()
     (data.ROOT / "data" / "research.json").write_text(json.dumps(out, default=float))
     print("wrote data/research.json")
 

@@ -1,8 +1,9 @@
 """Annuity prices from the production fit: ages 55, 65 and 75 in 2026, by sex, with 95% intervals.
 
 Uses the model and window chosen by backtest.py. Writes research/results/annuities_{source}.json, or
-annuities_{source}_{tag}.json with --tag (a sensitivity that keeps the run's chosen models). Refuses to run until
-the protocol is frozen.
+annuities_{source}_{tag}.json with --tag (a sensitivity that keeps the run's chosen models). --model and
+--last-year override the chosen model and the last year fitted, for exploratory runs outside the protocol; they need
+a tag. Refuses to run until the protocol is frozen.
 """
 from __future__ import annotations
 
@@ -48,15 +49,21 @@ def main() -> None:
     ap.add_argument("--deaths")
     ap.add_argument("--population")
     ap.add_argument("--tag")
+    ap.add_argument("--model", help='e.g. "CBD full"; replaces the chosen model for both sexes')
+    ap.add_argument("--last-year", type=int)
     a = ap.parse_args()
+    if (a.model or a.last_year) and not a.tag:
+        ap.error("--model and --last-year are outside the protocol and need --tag")
     frozen = require_frozen()
     bt = json.loads((OUT / f"backtest_{a.source}.json").read_text())
     paths = {"deaths": a.deaths, "population": a.population} if a.source == "statssa" else {}
     panels = data.load(a.source, **paths)
     rng = np.random.default_rng(SEED + 2)
-    out = {"source": a.source, "tag": a.tag, "protocol": frozen}
+    out = {"source": a.source, "tag": a.tag, "model": a.model, "last_year": a.last_year, "protocol": frozen}
+    if a.last_year:
+        panels = {s: r.sub(years=[y for y in r.years if y <= a.last_year]) for s, r in panels.items()}
     for s, r in panels.items():
-        model = bt["tests"]["chosen"][s]
+        model = a.model or bt["tests"]["chosen"][s]
         out[s] = {"model": model} | price(r, model, model.split(maxsplit=1)[1], rng)
     name = f"annuities_{a.source}" + (f"_{a.tag}" if a.tag else "")
     (OUT / f"{name}.json").write_text(json.dumps(out, indent=1, default=float))

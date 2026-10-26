@@ -109,7 +109,7 @@ At 4% and an annuitant factor of 0.7:
 | 65 | 13.53 [13.11, 14.03] | 6.8% | 16.05 [15.36, 16.70] | 8.3% | +22.6% | +23.3% |
 | 75 | 9.65 [9.29, 10.12] | 8.6% | 12.29 [11.48, 13.13] | 13.4% | +18.6% | +24.9% |
 
-**The data source moves the price more than the model's own uncertainty does.** At 65, the Stats SA price is about 23% above the WPP price, while each run's 95% interval is 7% to 15% wide. The two intervals do not overlap at any age. Across discount rates and annuitant factors, the width at 65 is 4.8% to 10.3% for men and 5.3% to 13.3% for women, narrower than on WPP, but these are lower bounds (P3).
+**The two runs disagree by more than either interval allows.** At 65, the Stats SA price is about 23% above the WPP price, while each run's 95% interval is 7% to 15% wide. The two intervals do not overlap at any age. Most of that gap is the choice of model and window, not the deaths data; see the [decomposition](#decomposition-exploratory). Across discount rates and annuitant factors, the width at 65 is 4.8% to 10.3% for men and 5.3% to 13.3% for women, narrower than on WPP, but these are lower bounds (P3).
 
 ## Registration completeness
 
@@ -130,7 +130,7 @@ The share peaks during 2003 to 2010 and falls after. A falling share makes regis
 | 65 | 13.23 [12.81, 13.73] | 15.72 [14.92, 16.50] | +22.6% → +19.9% | +23.3% → +20.7% |
 | 75 | 9.35 [9.02, 9.82] | 11.85 [10.91, 12.92] | +18.6% → +14.9% | +24.9% → +20.5% |
 
-**Registration drift explains only a small part of the gap**: between a tenth (at 65) and a third (men at 55). The rest comes from what still differs between the runs: model and window (RH post-peak against CBD full), jump-off (2019 against 2023) and the age pattern of registered deaths. These were not separated; doing so would be analysis outside the protocol.
+**Registration drift explains only a small part of the gap**: between a tenth (at 65) and a third (men at 55). The rest comes from what still differs between the runs: model and window, jump-off, and the age pattern of registered deaths. They are separated below.
 
 ## Exposure cross-check
 
@@ -142,6 +142,24 @@ WPP 1 July population at ages 50 to 79 over Stats SA's own projection (P0302 wor
 | Women | 0.927 | 0.922 | 0.939 | 0.972 | 0.983 | 1.004 |
 
 Until 2016, WPP puts 6% to 12% fewer people aged 50 to 79 than Stats SA does, so rates on WPP exposure are higher. From 2016 to 2019 WPP's population grows about 7% faster for men and 3.5% faster for women, which would make rates on WPP exposure fall faster than on Stats SA's. This is a second drift, in the denominator, of the same size as the completeness drift and in the same direction. It is reported, not corrected: the protocol has no Stats SA single-age exposure to correct it with.
+
+## Decomposition (exploratory)
+
+**Outside the protocol**, added after the results above were known and labelled as such. Two extra WPP runs (`annuities.py --model ... --last-year 2019 --tag ...`) fill the steps between the two pre-registered runs, so each row changes one thing from the row above. Price at 4% and factor 0.7, gap against the WPP run:
+
+| Step | Men 55 | Men 65 | Men 75 | Women 55 | Women 65 | Women 75 |
+| --- | --- | --- | --- | --- | --- | --- |
+| WPP deaths, CBD full, jump-off 2023 (pre-registered) | 14.04 | 11.04 | 8.14 | 16.03 | 13.02 | 9.84 |
+| Same, jump-off 2019 | +4.2% | +7.9% | +13.0% | +5.0% | +8.2% | +13.0% |
+| Same, RH post-peak | +8.1% | +27.1% | +37.0% | +6.0% | +18.5% | +41.5% |
+| Registered deaths, scaled to WPP's level (pre-registered) | +11.8% | +19.9% | +14.9% | +14.3% | +20.7% | +20.5% |
+| Registered deaths, as registered (pre-registered) | +17.6% | +22.6% | +18.6% | +17.9% | +23.3% | +24.9% |
+
+- **Jump-off.** Ending the WPP fit in 2019 instead of 2023 raises prices 4% to 13%: in WPP, life expectancy at 65 in 2023 is still below 2019 (13.2 against 13.8 years for men, 16.3 against 16.9 for women), so a fit that includes 2023 starts from heavier mortality and improves more slowly.
+- **Model and window.** On the same WPP deaths, RH from 2006 prices the annuity at 65 about 18% (men) and 10% (women) above CBD from 1997, and at 75 by more. RH's own 95% intervals are 4% to 18% wide and do not contain the CBD price at 65 or 75. This is model risk: the intervals carry parameter and process uncertainty within one model, not the choice between models.
+- **Deaths data.** With the model fixed at RH post-peak, swapping WPP's deaths for registered ones scaled to WPP's level raises the price at 55 (3% for men, 8% for women), lowers it at 75 (16% and 15%), and at 65 lowers it 6% for men and raises it 2% for women. Registration drift then adds 2% to 5%.
+
+So the 23% headline gap at 65 is mostly model choice and jump-off. The pre-registered rule picks RH on Stats SA data and CBD on WPP, and that choice alone is worth more than any single interval's width.
 
 ## Still to do
 

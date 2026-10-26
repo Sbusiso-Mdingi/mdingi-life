@@ -45,7 +45,19 @@ python3.12 -m venv .venv && .venv/bin/pip install -r requirements.txt
 .venv/bin/python -m research.export
 ```
 
-Add `--source statssa --deaths <csv> --population <csv>` to run on Stats SA data instead.
+The published results run on Stats SA registered deaths. The DataFirst unit records (catalogues 830 and 1074) are not redistributed here; with their CSVs in `data/raw/statssa/mcd/`:
+
+```
+.venv/bin/python -m research.mcd           # deaths by year, sex and age
+.venv/bin/python -m research.exposure      # WPP population, checked against Stats SA P0302
+.venv/bin/python -m research.completeness  # registered vs WPP deaths, and the scaled deaths
+S="--source statssa --deaths data/raw/statssa/mcd_deaths.csv --population data/raw/statssa/wpp_population.csv"
+.venv/bin/python -m research.backtest ${=S}
+.venv/bin/python -m research.annuities ${=S}
+.venv/bin/python -m research.export ${=S}
+```
+
+Without `--source` the scripts run on UN WPP 2024, the comparison run.
 
 The service and dashboard read `data/research.json`, which `research.export` writes.
 
