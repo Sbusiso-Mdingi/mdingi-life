@@ -120,3 +120,18 @@ Passing or failing does not change the method. Every result is reported.
 - Inflation-linked cash flows treated as real, as in v2.
 - Expense inflation flat at the 30-year breakeven.
 - Ages and policy durations as whole years on the valuation date.
+
+## Changes after freezing
+
+### 26 October 2026: key-rate matching, an added result
+
+Written after the main run and before any run of what follows. Everything in that run was seen: SCR R423.5 million, cover 0.94 on R400 million, the real interest charge R192.6 million and the nominal R49.1 million (`RESULTS_v3.md`). It showed that two bonds matched on duration leave most of the matched interest charge, because SAM's relative shocks are large and not parallel, and the annuities pay out to age 120.
+
+Nothing above changes, and the main result stays the one reported. One result is added: the same balance sheet with the annuities matched on key rates instead of duration.
+
+- **Key-rate matching.** For each annuity type, holdings in every bond of its kind used in the main run (in issue, at least a year to final redemption), chosen to match the income's best-estimate value and to minimise the sum of squared differences between the income's and the portfolio's key-rate DV01s at 5, 10, 20 and 30 years (v2's key rates), on the unshocked curve. Holdings are not negative: no shorting. Solved by non-negative least squares with the value as a heavily weighted row; the holdings are then scaled to match the value exactly.
+- **Everything else as in the main run:** the bill for the rest, own funds of R400 million, every stress, the aggregation and the risk margin. The risk margin does not depend on the assets, so it does not change.
+- **Reported beside the main result:** the holdings, the interest charges, the SCR and the cover.
+- **K6, key rates beat duration.** The key-rate matched interest charge is below the two-bond one. Reported whether it passes or not.
+
+Reason: v2 found the two-bond match leaves the 30-year key rate open, and v3 put a price on that. This tests the obvious management action. It does not replace the protocol's method.
