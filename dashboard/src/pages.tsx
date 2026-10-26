@@ -375,6 +375,9 @@ export function Overview({ r, go }: { r: Research; go: Go }) {
 
 // Get a quote -------------------------------------------------------------------------------------------------------
 
+// The mortality model version that prices each sex. Both stay on v1 until a revision passes its frozen tests.
+const PRICED_ON: Record<Sex, string> = { Male: "v1", Female: "v1" };
+
 export function Quote({ r }: { r: Research }) {
   const v2 = r.v2!;
   const book = r.v3!.book!;
@@ -449,6 +452,9 @@ export function Quote({ r }: { r: Research }) {
                 That is <b>{num(p.median, 1)} years</b> of income up front.{" "}
                 {kind === "level" ? "Your income stays fixed, so inflation slowly eats it." : "Your income keeps its buying power."}
               </span>
+              <span className="line">
+                Priced on the {PRICED_ON[sex]} mortality model for {sex === "Male" ? "men" : "women"}.
+              </span>
             </div>
           </div>
         </section>
@@ -500,7 +506,8 @@ export function Quote({ r }: { r: Research }) {
         <IntervalChart label={`Price of a pension of ${randFull(monthly)} a month by sex and age at retirement, R million`} rows={rows} fmt={(x) => `R${x.toFixed(2)}m`} groups={2} />
         <p className="note">
           The price depends on how long you will live, and nobody knows that for sure. I forecast it from Stats SA death records and simulate thousands of
-          possible futures; the bar is the middle 95% of them. Women live longer, so their pensions cost more.
+          possible futures; the bar is the middle 95% of them. Women live longer, so their pensions cost more. Men's prices use the{" "}
+          {PRICED_ON.Male} mortality model and women's the {PRICED_ON.Female} model. A revision is under way; until it passes its tests, v1 prices both.
         </p>
         <LowerBound />
         <div className="callout">
@@ -1203,6 +1210,13 @@ export function Built({ r }: { r: Research }) {
             <li>
               <strong>Ranges are too narrow</strong>
               The mortality forecast's 95% ranges caught fewer outcomes than they should have, for both sexes. Read every range here as a lower bound.
+            </li>
+            <li>
+              <strong>Birth years on death records are heaped</strong>
+              Deaths of people born in a year ending in 0 run about 10% (men) and 14% (women) above the neighbouring years, and 15% and 22% for 1930. Years ending in 5 are not
+              heaped, and neither are ages. In 2021 to 2023, where the date of birth is recorded, 1.9% of the dates are 1 January, seven times what chance
+              would give, so unknown dates of birth are probably filled in with round years. The cohort term of one model reads this as real differences between
+              generations. Checked on 26 October 2026, in <code>research/heaping.py</code>.
             </li>
             <li>
               <strong>The backtests flatter the models</strong>
