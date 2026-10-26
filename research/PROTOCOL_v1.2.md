@@ -2,7 +2,7 @@
 
 Written on 26 October 2026, after v1.1 was run and reported (`RESULTS_v1.1.md`), and before any v1.2 run. A revision made in response to v1.1's results. v1 and v1.1 stay frozen and reported as they are.
 
-Frozen at commit: (not yet frozen)
+Frozen at commit: `1dc85fcda492`
 
 ## The one change
 
