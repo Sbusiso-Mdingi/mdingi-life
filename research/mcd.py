@@ -1,11 +1,11 @@
 """Tally Stats SA unit death records (DataFirst, Mortality and Causes of Death) by year of death, sex and age.
 
-The DataFirst files are split by the year Stats SA processed the records, not the year of death: each holds late
-registrations of earlier deaths. Every file in data/raw/statssa/mcd is read, stillbirths are dropped, and deaths
+Files may hold late registrations of earlier deaths (the 2021-2023 file is split by the year Stats SA processed
+the records). Every file in data/raw/statssa/mcd is read, stillbirths are dropped, and deaths
 are counted by year of death. Sex is left blank where Stats SA has "Unspecified" or "Undeterminable", and age
 where it is missing, for data.statssa to spread pro rata.
 
-Writes data/raw/statssa/mcd_deaths.csv and prints, for each year of death, which processing years it came
+Writes data/raw/statssa/mcd_deaths.csv and prints, for each year of death, which files it came
 from and how registered deaths compare with UN WPP 2024 deaths (a completeness check, not a rate).
 """
 from __future__ import annotations
@@ -16,39 +16,49 @@ from mdingilife import data
 
 MCD = data.RAW / "statssa" / "mcd"
 OUT = data.RAW / "statssa" / "mcd_deaths.csv"
-COLS = ["DeathType", "AgeYear", "Sex", "DeathYear", "ProcessingYear"]
+COLS = ["DeathType", "AgeYear", "Sex", "DeathYear"]
 BANDS = [0, 15, 50, 65, 80, 90, 100]
 MAIN = 100_000  # a year of death is compared only where a file holds its main registrations
 
 
-def records() -> pd.DataFrame:
+def counts(chunk: int = 1_000_000) -> pd.DataFrame:
+    """Individual deaths by file, year of death, sex and age, read in chunks (the 1997-2009 file is 2.6 GB).
+
+    Older files put the deceased, dates and causes in separate tables; only the deceased table is linked in.
+    Text columns are read as Latin-1 because the 1997-2009 CSVs are not UTF-8.
+    """
     files = sorted(MCD.glob("*.csv"))
     if not files:
         raise SystemExit(f"no DataFirst CSVs in {MCD}")
-    d = pd.concat([pd.read_csv(f, usecols=COLS, dtype=str).assign(file=f.name) for f in files], ignore_index=True)
-    d = d[d["DeathType"] == "Individual death"]
-    d["sex"] = d["Sex"].where(d["Sex"].isin(data.SEXES))
-    d["age"] = pd.to_numeric(d["AgeYear"], errors="coerce")
-    d["year"] = pd.to_numeric(d["DeathYear"], errors="coerce").astype("Int64")
-    return d
+    parts = []
+    for f in files:
+        for d in pd.read_csv(f, usecols=COLS, dtype=str, encoding="latin-1", chunksize=chunk):
+            d = d[d["DeathType"] == "Individual death"]
+            d = pd.DataFrame({"file": f.stem, "year": pd.to_numeric(d["DeathYear"], errors="coerce"),
+                              "sex": d["Sex"].where(d["Sex"].isin(data.SEXES)),
+                              "age": pd.to_numeric(d["AgeYear"], errors="coerce")})
+            parts.append(d.groupby(["file", "year", "sex", "age"], dropna=False).size().rename("deaths"))
+    return pd.concat(parts).groupby(level=[0, 1, 2, 3], dropna=False).sum().reset_index()
 
 
 def main() -> None:
-    d = records()
-    print(f"{len(d):,} individual deaths; sex unknown {d['sex'].isna().sum():,}, age unknown "
-          f"{d['age'].isna().sum():,}, year unknown {d['year'].isna().sum():,} (dropped)")
-    print("\nDeaths by year of death (rows) and processing year (columns):")
-    print(pd.crosstab(d["year"], d["ProcessingYear"]).tail(15).to_string())
+    c = counts()
+    n = lambda m: f"{c.loc[m, 'deaths'].sum():,.0f}"
+    print(f"{n(slice(None))} individual deaths; sex unknown {n(c['sex'].isna())}, age unknown "
+          f"{n(c['age'].isna())}, year unknown {n(c['year'].isna())} (dropped)")
+    print("\nDeaths by year of death (rows) and file (columns):")
+    print(c.pivot_table(index="year", columns="file", values="deaths", aggfunc="sum", fill_value=0)
+          .astype(int).to_string())
 
-    tidy = (d.dropna(subset=["year"]).groupby(["year", "sex", "age"], dropna=False).size()
-            .rename("deaths").reset_index())
+    tidy = (c.dropna(subset=["year"]).groupby(["year", "sex", "age"], dropna=False)["deaths"].sum()
+            .reset_index().astype({"year": int}))
     tidy.to_csv(OUT, index=False)
     print(f"\nwrote {OUT.relative_to(data.ROOT)}: {len(tidy):,} cells")
 
     w = data.wpp()
     known = tidy.dropna(subset=["sex", "age"])
-    counts = known.groupby("year")["deaths"].sum()
-    both = sorted(set(counts[counts >= MAIN].index) & set(w["year"]))
+    per_year = known.groupby("year")["deaths"].sum()
+    both = sorted(set(per_year[per_year >= MAIN].index) & set(w["year"]))
     print("\nRegistered deaths as a share of WPP 2024 deaths, ages under 100 (unknown sex not spread):")
     known = known[known["age"] < 100]
     for y in both:
