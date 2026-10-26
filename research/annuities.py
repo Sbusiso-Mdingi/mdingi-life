@@ -1,7 +1,8 @@
 """Annuity prices from the production fit: ages 55, 65 and 75 in 2026, by sex, with 95% intervals.
 
-Uses the model and window chosen by backtest.py. Writes research/results/annuities.json. Refuses to run until the
-protocol is frozen.
+Uses the model and window chosen by backtest.py. Writes research/results/annuities_{source}.json, or
+annuities_{source}_{tag}.json with --tag (a sensitivity that keeps the run's chosen models). Refuses to run until
+the protocol is frozen.
 """
 from __future__ import annotations
 
@@ -46,17 +47,19 @@ def main() -> None:
     ap.add_argument("--source", default="wpp", choices=["wpp", "statssa"])
     ap.add_argument("--deaths")
     ap.add_argument("--population")
+    ap.add_argument("--tag")
     a = ap.parse_args()
     frozen = require_frozen()
     bt = json.loads((OUT / f"backtest_{a.source}.json").read_text())
     paths = {"deaths": a.deaths, "population": a.population} if a.source == "statssa" else {}
     panels = data.load(a.source, **paths)
     rng = np.random.default_rng(SEED + 2)
-    out = {"source": a.source, "protocol": frozen}
+    out = {"source": a.source, "tag": a.tag, "protocol": frozen}
     for s, r in panels.items():
         model = bt["tests"]["chosen"][s]
         out[s] = {"model": model} | price(r, model, model.split(maxsplit=1)[1], rng)
-    (OUT / f"annuities_{a.source}.json").write_text(json.dumps(out, indent=1, default=float))
+    name = f"annuities_{a.source}" + (f"_{a.tag}" if a.tag else "")
+    (OUT / f"{name}.json").write_text(json.dumps(out, indent=1, default=float))
 
 
 if __name__ == "__main__":
