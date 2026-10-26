@@ -102,3 +102,11 @@ Written after v4's results (`RESULTS_v4.md`) and before anything below was run. 
 - **The rule for extra capital.** Extra capital is invested in the same mix as today's assets. At t = 0, total assets are BEL + risk margin + own funds, and the key-rate matched bond holdings and the bill are both scaled by k, the ratio of total assets at that level to total assets at R400 million (R4,405.3 million). At each year-end rematch, the matched holdings are scaled by the same k and the rest goes into the bill, as before. None of it is held as extra cash. The SCR is recomputed at each level, since the extra bonds change the interest-rate stress losses.
 - **Everything else as in v4.** The two-factor generator, the seed and the same 1,000 scenarios, the projection, rematching, and the five named stresses applied to each level's t = 0 position.
 - **Reported for each level:** the starting capital, the SCR at t = 0, cover at t = 0, the share of scenarios covered at every year-end, and the lowest cover under each of the five stresses. k = 1 must reproduce v4's t = 0 cover of 1.1486, or nothing else is reported until the difference is explained.
+
+### 26 October 2026: stopping early, and how the capital levels are labelled
+
+Written after R600m, R627m, R800m and R1,000m had run, while R500m was running and before its result was seen.
+
+- **The levels are exploratory.** They were added after v4's first result (A1 failing at R400 million) was seen, so they are reported as an exploration of that result, not as a test with a pass mark.
+- **No refinement to the nearest R25 million.** The crossing of 95% lay between R400 million (60.1%) and R600 million (97.7%). R500 million is the last level run. No R450m, R550m or R25 million points are run.
+- **How the crossing is reported.** R627 million (98.7%) is the upper reference point. If R500 million is at or above 95%, the crossing is reported as lying between R400 million and R500 million. If it is below, it is reported as lying between R500 million and R627 million.
