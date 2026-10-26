@@ -137,10 +137,10 @@ class Curves:
         return sam.Curve(self.fwd["nominal"], "nominal", sc.nominal), sam.Curve(self.fwd["real"], "real", sc.real)
 
 
-def liabilities(b: Book, cv: Curves, sc: Scenario) -> dict:
-    """BEL per cell, by part, under a scenario."""
+def liabilities(b: Book, cv: Curves, sc: Scenario, e: float | None = None) -> dict:
+    """BEL per cell, by part, under a scenario. `e` overrides the expense inflation before any stress to it."""
     nom, real = cv.get(sc)
-    e = sam.breakeven(nom, real)
+    e = sam.breakeven(nom, real) if e is None else e
     if sc.inflation:
         e += max(sam.INFLATION_ADD, sam.INFLATION_REL * e)
     t = b.t
@@ -233,14 +233,22 @@ def asset_value(holdings: dict, cashflows: dict, bill: float, cv: Curves, sc: Sc
 # --- the SCR --------------------------------------------------------------------------------------------------------
 
 def run(grids: dict, table: pd.DataFrame, basis: Basis, curves: dict, bonds: dict, settle, matched: bool = True,
-        method: str = "duration") -> dict:
-    b = Book(grids, table, basis)
+        method: str = "duration", book: Book | None = None, assets: float | None = None,
+        holdings: dict | None = None) -> dict:
+    """v3's balance sheet and SCR. v4 passes an aged `book`, the `assets` carried forward (own funds are what is
+    left after BEL and risk margin; by default they are R400 million) and, to hold a portfolio without rematching,
+    the bond `holdings` by kind."""
+    b = book or Book(grids, table, basis)
     cv = Curves(curves[basis.curve]["nominal"], curves[basis.curve]["real"])
     L0 = liabilities(b, cv, BASE)
     bel = totals(L0)
-    m = match(b, cv, bonds, settle, method) if matched else {}
-    holdings = {k: v["units"] for k, v in m.items()}
-    cashflows = {**bond_book(bonds, settle, "real"), **bond_book(bonds, settle, "nominal")}
+    if holdings is None:
+        m = match(b, cv, bonds, settle, method) if matched else {}
+        holdings = {k: v["units"] for k, v in m.items()}
+        cashflows = {**bond_book(bonds, settle, "real"), **bond_book(bonds, settle, "nominal")}
+    else:
+        m = {}
+        cashflows = {code: bonds[code].cashflows(settle) for units in holdings.values() for code in units}
     matched_value = asset_value(holdings, cashflows, 0.0, cv, BASE)
 
     life = {}
@@ -275,9 +283,11 @@ def run(grids: dict, table: pd.DataFrame, basis: Basis, curves: dict, bonds: dic
     years = np.arange(YEARS)
     scr_ru = scr_ru0 * (w * run_off["annuities"] / run_off["annuities"][0] + (1 - w) * run_off["sum_assured"] / run_off["sum_assured"][0])
     rm = sam.COC * float(np.sum(scr_ru * nom.df(years + 1)))
+    rm_annuities = sam.COC * scr_ru0 * w * float(np.sum(run_off["annuities"] / run_off["annuities"][0] * nom.df(years + 1)))
 
     # Assets: the matched bonds, and the bill for the rest (BEL + risk margin + own funds).
-    total_assets = bel["total"] + rm + OWN_FUNDS
+    total_assets = bel["total"] + rm + OWN_FUNDS if assets is None else assets
+    own_funds = total_assets - bel["total"] - rm
     bill = (total_assets - matched_value) / float(nom.df(BILL))
     bof0 = asset_value(holdings, cashflows, bill, cv, BASE) - bel["total"]
     rate = {}
@@ -300,11 +310,12 @@ def run(grids: dict, table: pd.DataFrame, basis: Basis, curves: dict, bonds: dic
         "market": market, "bscr": bscr, "diversification": nominal + real_ + sum(vec) - bscr,
         "op": {"earned_premiums": earned, "premiums": sam.OP_PREMIUMS * earned,
                "provisions": sam.OP_PROVISIONS * max(bel["total"], 0), "charge": op},
-        "scr": scr, "risk_margin": rm, "scr_ru": {"t0": scr_ru0, "annuity_weight": w, "by_year": list(scr_ru[:60])},
+        "scr": scr, "risk_margin": rm, "risk_margin_parts": {"annuities": rm_annuities, "funeral": rm - rm_annuities}, "scr_ru": {"t0": scr_ru0, "annuity_weight": w, "by_year": list(scr_ru[:60])},
         "assets": {"total": total_assets, "bill": bill * float(nom.df(BILL)), "matched": matched_value,
                    "matching": {k: {"liability": v["liability"], "units": v["units"],
-                                    "bonds": {code: bd for code, bd in v["bonds"].items()}} for k, v in m.items()}},
-        "own_funds": OWN_FUNDS, "cover": OWN_FUNDS / scr,
+                                    "bonds": {code: bd for code, bd in v["bonds"].items()}} for k, v in m.items()},
+                   "holdings": holdings},
+        "own_funds": own_funds, "cover": own_funds / scr,
         "capital_for": {"1.0": scr, str(INDUSTRY_COVER): INDUSTRY_COVER * scr},
     }
 
@@ -384,11 +395,16 @@ def check_k1(grids, table, curves) -> dict:
             "scenarios": rows, "worst_relative": worst, "pass": bool(worst < 1e-8)}
 
 
-def market() -> tuple[dict, dict, dict, object]:
+def auctions(bonds: dict) -> pd.DataFrame:
+    """v2's auctions after its screen."""
+    a, _ = rc.load(bonds)
+    return a[~rc.screen(a)]
+
+
+def market(a: pd.DataFrame | None = None) -> tuple[dict, dict, dict, object]:
     """v2's curves on the valuation date (LI and NS, both kinds), the bonds, the auction days and the settlement date."""
     bonds = rc.book()
-    a, _ = rc.load(bonds)
-    a = a[~rc.screen(a)]
+    a = auctions(bonds) if a is None else a
     ilb_day = a.loc[a["kind"] == "ilb", "auction_date"].max()
     days = {"real": ("ilb", ilb_day),
             "nominal": ("fixed", a.loc[(a["kind"] == "fixed") & (a["auction_date"] <= ilb_day), "auction_date"].max())}
