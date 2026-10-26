@@ -2,7 +2,7 @@
 
 Written on 26 October 2026, after v1 was run and reported, and before any v1.1 model was fitted. This is a revision made in response to v1's results, not a fresh test. v1 stays frozen at `6335c9c5c418` and its results stay the reported v1 results. Every v1.1 result is reported next to v1's.
 
-Frozen at commit: (not yet frozen)
+Frozen at commit: `785cd61cc5ab`
 
 Seen beforehand, and disclosed here, because each one shaped a fix below:
 
