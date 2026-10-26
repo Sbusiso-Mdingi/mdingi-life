@@ -6,7 +6,7 @@ Built in releases. Each one stands on its own and feeds the next.
 
 | Release | Question | Status |
 | --- | --- | --- |
-| v1 Liabilities | How much does uncertainty about South African mortality move the price of a life annuity? | First run on UN WPP 2024; Stats SA to follow |
+| v1 Liabilities | How much does uncertainty about South African mortality move the price of a life annuity? | Run on UN WPP 2024 and on Stats SA registered deaths ([results](research/RESULTS.md)) |
 | v2 Assets | What does the SA government bond curve look like each day, and how well do the assets match the liabilities? | Planned |
 | v3 Balance sheet | What is Mdingi Life's SAM solvency capital requirement, and its cover ratio today? | Planned |
 | v4 Scenarios and reporting | Economic scenario generator, IFRS 17 CSM roll-forward, ORSA-style stress tests | Planned |
