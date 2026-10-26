@@ -73,6 +73,11 @@ export type V3 = {
   };
   unmatched: Sheet;
   sensitivities: Record<string, Sheet>;
+  key_rate?: Sheet & {
+    rate_losses: Record<string, number>;
+    checks: { K6: { key_rate: number; duration: number; pass: boolean } };
+    holdings: Record<"real" | "nominal", Record<string, number>>;
+  };
   checks: {
     K1: { worst_relative: number; pass: boolean; scenarios: number };
     K3: { matched: number; unmatched: number; ratio: number; pass: boolean };

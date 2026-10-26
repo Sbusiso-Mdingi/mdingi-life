@@ -1386,7 +1386,7 @@ function Solvency({ v }: { v: V3 }) {
       <div className="panel-head">
         <div>
           <p className="eyebrow">SCR · standard formula, FSI 4 · valuation date {longDate(v.valuation_date)}</p>
-          <h2 className="serif">R400 million does not cover the SCR. Longevity drives it.</h2>
+          <h2 className="serif">With two-bond matching, R400 million does not cover the SCR</h2>
         </div>
       </div>
       <div className="metrics">
@@ -1460,38 +1460,38 @@ function Solvency({ v }: { v: V3 }) {
 }
 
 function Interest({ v }: { v: V3 }) {
-  const m = v.main, u = v.unmatched;
+  const m = v.main, u = v.unmatched, k = v.key_rate;
   const rows = [
-    { key: "real", label: "Real rates", a: m.interest.real, b: u.interest.real },
-    { key: "nominal", label: "Nominal rates", a: m.interest.nominal, b: u.interest.nominal },
-    { key: "combined", label: "Interest, diversified", a: m.interest.combined, b: u.interest.combined },
+    { key: "real" as const, label: "Real rates" },
+    { key: "nominal" as const, label: "Nominal rates" },
+    { key: "combined" as const, label: "Interest, diversified" },
   ];
   const groups: BarGroup[] = rows.map((x) => ({
     key: x.key,
     label: x.label,
     values: [
-      { key: "m", label: "Matched", color: "var(--s1)", value: x.a / 1e6 },
-      { key: "u", label: "Unmatched", color: "var(--s2)", value: x.b / 1e6 },
+      { key: "m", label: "Two bonds, duration", color: "var(--s1)", value: m.interest[x.key] / 1e6 },
+      ...(k ? [{ key: "k", label: "Key rates", color: "var(--s3)", value: k.interest[x.key] / 1e6 }] : []),
+      { key: "u", label: "Unmatched", color: "var(--s2)", value: u.interest[x.key] / 1e6 },
     ],
   }));
-  const real = m.matching.real;
-  const bonds = Object.entries(real.bonds);
   return (
     <section className="panel" id="v3-match">
       <div className="panel-head">
         <div>
           <p className="eyebrow">Interest-rate risk · FSI 4.1 §5 · relative shocks to each curve, the other curve held</p>
-          <h2 className="serif">Matching removes most of the interest charge, not all of it</h2>
+          <h2 className="serif">{k ? "Matching on key rates, not duration, covers the SCR" : "Matching removes most of the interest charge, not all of it"}</h2>
         </div>
       </div>
       <div className="metrics">
-        <Metric className="sans" value={f2(m.cover)} label="Cover, matched" sub={`SCR ${rand(m.scr)}`} />
+        <Metric className="sans" value={f2(m.cover)} label="Cover, two bonds" sub={`SCR ${rand(m.scr)}, matched on duration`} />
+        {k && <Metric className="sans" value={f2(k.cover)} label="Cover, key rates" sub={`SCR ${rand(k.scr)}, ${Object.keys(k.holdings.real).length} inflation-linked bonds incl. I2058`} />}
         <Metric className="sans" value={f2(u.cover)} label="Cover, unmatched" sub={`SCR ${rand(u.scr)}, everything in a 182-day bill`} />
-        <Metric className="sans" value={bonds.map(([b]) => b).join(" + ")} label="Inflation-linked match" sub={`${bonds.map(([b, x]) => `${b} ${num(x.duration, 1)}y`).join(", ")} against ${num(real.liability.duration, 1)}y`} />
       </div>
       <Legend
         items={[
-          { label: "Matched", color: "var(--s1)" },
+          { label: "Two bonds, duration", color: "var(--s1)" },
+          ...(k ? [{ label: "Key rates", color: "var(--s3)" }] : []),
           { label: "Unmatched", color: "var(--s2)" },
         ]}
       />
@@ -1499,21 +1499,25 @@ function Interest({ v }: { v: V3 }) {
       <p className="note">
         The bonds match each annuity type's value and duration, but SAM's shocks are relative and large. Real rates fall about 2.4 points at 10 years and 2.75 points beyond 30. The
         annuities pay out to age 120 and gain more from a fall that size than two bonds near 10 years do. Real rates rising gains {rand(-m.rate_losses["real up"])}, which
-        confirms it. A falling real curve also raises expense inflation, and no bond hedges that. This is the 30-year gap that v2 found, at SAM's size of shock.
+        confirms it. This is the 30-year gap that v2 found, at SAM's size of shock.
+        {k &&
+          ` Matching value and the 5, 10, 20 and 30-year key rates instead, with every bond of each kind and no shorting, cuts the interest charge to ${rand(k.interest.combined)} and lifts cover to ${f2(k.cover)} on the same capital. That run was added by a protocol amendment after the two-bond result was seen.`}
       </p>
       <TableView>
         <table>
           <thead>
             <tr>
               <th>Shock</th>
-              <th className="num">Loss, matched (R million)</th>
+              <th className="num">Loss, two bonds (R million)</th>
+              {k && <th className="num">Loss, key rates</th>}
             </tr>
           </thead>
           <tbody>
-            {Object.entries(m.rate_losses).map(([k, x]) => (
-              <tr key={k}>
-                <td>{k[0].toUpperCase() + k.slice(1)}</td>
+            {Object.entries(m.rate_losses).map(([key, x]) => (
+              <tr key={key}>
+                <td>{key[0].toUpperCase() + key.slice(1)}</td>
                 <td className="num">{millions(x)}</td>
+                {k && <td className="num">{millions(k.rate_losses[key])}</td>}
               </tr>
             ))}
           </tbody>

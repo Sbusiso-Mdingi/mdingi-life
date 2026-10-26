@@ -16,6 +16,7 @@ from datetime import timedelta
 
 import numpy as np
 import pandas as pd
+from scipy.optimize import nnls
 
 from mdingilife import annuity, curves as c, data, sam
 from mdingilife.protocol import PROTOCOL_V2, PROTOCOL_V3, require_frozen
@@ -182,9 +183,10 @@ def bond_book(bonds: dict, settle, kind: str) -> dict:
     return out
 
 
-def match(b: Book, cv: Curves, bonds: dict, settle) -> dict:
-    """For each annuity type, the two bonds of its kind whose effective durations bracket the income's, held to
-    match its value and duration on the unshocked curve (v2's method)."""
+def match(b: Book, cv: Curves, bonds: dict, settle, method: str = "duration") -> dict:
+    """For each annuity type, bonds of its kind held to match the income's value on the unshocked curve, and either
+    its duration with the two bonds whose effective durations bracket it (v2's method), or its key-rate DV01s as
+    nearly as non-negative holdings in every bond of the kind allow (amendment of 26 October 2026)."""
     out = {}
     for kind, sel in (("real", b.ilb), ("nominal", ~b.ilb)):
         inf, _ = sam.project(b.mu_ann[False][sel])
@@ -192,13 +194,30 @@ def match(b: Book, cv: Curves, bonds: dict, settle) -> dict:
         fwd = cv.fwd[kind]
         liab = risk(lambda f: float(w @ sam.Curve(f).df(b.t)), fwd)
         book = {k: risk(lambda f, t=t, cf=cf: bond_value(t, cf, f), fwd) for k, (t, cf) in bond_book(bonds, settle, kind).items()}
-        below = max((k for k in book if book[k]["duration"] <= liab["duration"]), key=lambda k: book[k]["duration"])
-        above = min((k for k in book if book[k]["duration"] > liab["duration"]), key=lambda k: book[k]["duration"])
-        (p1, d1), (p2, d2) = [(book[k]["value"], book[k]["duration"]) for k in (below, above)]
-        w2 = (liab["duration"] - d1) / (d2 - d1)
-        out[kind] = {"liability": liab, "bonds": {below: book[below], above: book[above]},
-                     "units": {below: liab["value"] * (1 - w2) / p1, above: liab["value"] * w2 / p2}}
+        if method == "key":
+            units = key_rate_units(liab, book)
+        else:
+            below = max((k for k in book if book[k]["duration"] <= liab["duration"]), key=lambda k: book[k]["duration"])
+            above = min((k for k in book if book[k]["duration"] > liab["duration"]), key=lambda k: book[k]["duration"])
+            (p1, d1), (p2, d2) = [(book[k]["value"], book[k]["duration"]) for k in (below, above)]
+            w2 = (liab["duration"] - d1) / (d2 - d1)
+            units = {below: liab["value"] * (1 - w2) / p1, above: liab["value"] * w2 / p2}
+        out[kind] = {"liability": liab, "bonds": {k: book[k] for k in units}, "units": units}
     return out
+
+
+def key_rate_units(liab: dict, book: dict, weight: float = 1e3) -> dict:
+    """Non-negative holdings that match the value (a row weighted by `weight`) and come nearest the key-rate DV01s,
+    each row scaled to the liability's; then scaled to the value exactly. Bonds held at zero are dropped."""
+    codes = sorted(book)
+    keys = list(liab["dv01"])
+    total = sum(liab["dv01"].values())
+    A = np.array([[book[c]["dv01"][k] / total for c in codes] for k in keys]
+                 + [[weight * book[c]["value"] / liab["value"] for c in codes]])
+    y = np.array([liab["dv01"][k] / total for k in keys] + [weight])
+    n, _ = nnls(A, y)
+    n *= liab["value"] / sum(n[i] * book[c]["value"] for i, c in enumerate(codes))
+    return {c: float(n[i]) for i, c in enumerate(codes) if n[i] > 0}
 
 
 def asset_value(holdings: dict, cashflows: dict, bill: float, cv: Curves, sc: Scenario) -> float:
@@ -213,12 +232,13 @@ def asset_value(holdings: dict, cashflows: dict, bill: float, cv: Curves, sc: Sc
 
 # --- the SCR --------------------------------------------------------------------------------------------------------
 
-def run(grids: dict, table: pd.DataFrame, basis: Basis, curves: dict, bonds: dict, settle, matched: bool = True) -> dict:
+def run(grids: dict, table: pd.DataFrame, basis: Basis, curves: dict, bonds: dict, settle, matched: bool = True,
+        method: str = "duration") -> dict:
     b = Book(grids, table, basis)
     cv = Curves(curves[basis.curve]["nominal"], curves[basis.curve]["real"])
     L0 = liabilities(b, cv, BASE)
     bel = totals(L0)
-    m = match(b, cv, bonds, settle) if matched else {}
+    m = match(b, cv, bonds, settle, method) if matched else {}
     holdings = {k: v["units"] for k, v in m.items()}
     cashflows = {**bond_book(bonds, settle, "real"), **bond_book(bonds, settle, "nominal")}
     matched_value = asset_value(holdings, cashflows, 0.0, cv, BASE)
@@ -271,7 +291,7 @@ def run(grids: dict, table: pd.DataFrame, basis: Basis, curves: dict, bonds: dic
     op = min(sam.OP_CAP * bscr, op_base)
     scr = bscr + op
     return {
-        "basis": basis.__dict__, "matched": matched, "policies": {"annuities": b.n_ann, "funeral": b.n_fun},
+        "basis": basis.__dict__, "matched": matched, "method": method if matched else None, "policies": {"annuities": b.n_ann, "funeral": b.n_fun},
         "inflation": L0["inflation"],
         "bel": bel, "bel_parts": {k: float(np.sum(v)) for k, v in L0.items() if k != "inflation"},
         "life_losses": losses, "life": life, "life_alone": alone, "scr_life": scr_life,
@@ -364,15 +384,8 @@ def check_k1(grids, table, curves) -> dict:
             "scenarios": rows, "worst_relative": worst, "pass": bool(worst < 1e-8)}
 
 
-def main() -> None:
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--deaths", required=True)
-    ap.add_argument("--population", required=True)
-    args = ap.parse_args()
-    frozen = {"v1": require_frozen(), "v2": require_frozen(PROTOCOL_V2), "v3": require_frozen(PROTOCOL_V3)}
-    if not (BOOK / "funeral.csv").exists():
-        raise SystemExit("run python -m research.book_v3 first")
-
+def market() -> tuple[dict, dict, dict, object]:
+    """v2's curves on the valuation date (LI and NS, both kinds), the bonds, the auction days and the settlement date."""
     bonds = rc.book()
     a, _ = rc.load(bonds)
     a = a[~rc.screen(a)]
@@ -385,8 +398,19 @@ def main() -> None:
         last = max(q.maturity for q in pts)
         curves["LI"][k] = c.forwards(c.Bootstrap.fit(pts), last, CURVE_YEARS)
         curves["NS"][k] = c.forwards(rc.fit("NS", pts), last, CURVE_YEARS)
-    settle = (ilb_day + timedelta(days=3)).date()
-    bond_codes = bonds
+    return curves, bonds, days, (ilb_day + timedelta(days=3)).date()
+
+
+def main() -> None:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--deaths", required=True)
+    ap.add_argument("--population", required=True)
+    args = ap.parse_args()
+    frozen = {"v1": require_frozen(), "v2": require_frozen(PROTOCOL_V2), "v3": require_frozen(PROTOCOL_V3)}
+    if not (BOOK / "funeral.csv").exists():
+        raise SystemExit("run python -m research.book_v3 first")
+    curves, bond_codes, days, settle = market()
+    ilb_day = days["real"][1]
 
     grids = annuitant_grids(args.deaths, args.population)
     table = pd.read_csv(TABLE)

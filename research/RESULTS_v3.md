@@ -6,7 +6,7 @@ Raw output: `research/results/balance_v3.json` and `funeral_table.csv`, with the
 
 ## The answer
 
-With the R400 million of own funds chosen before the run, **Mdingi Life does not cover its SCR: the cover ratio is 0.94.** The SCR is R423 million. Cover of 100% needs R424 million of own funds. The life industry's median of 1.8 needs R762 million.
+With the R400 million of own funds chosen before the run, **Mdingi Life does not cover its SCR: the cover ratio is 0.94.** Matching the annuities on key rates instead of duration, an action added by amendment after this result was seen, brings cover to 1.15 on the same capital (below). The SCR is R423 million. Cover of 100% needs R424 million of own funds. The life industry's median of 1.8 needs R762 million.
 
 Longevity drives the result: 80% of the standalone life charges and 47% of all standalone charges before operational risk (R595.8 million). The second largest is a real interest-rate charge that two-bond matching leaves behind.
 
@@ -85,6 +85,28 @@ Matching cuts the interest charge by 78%. K3 asks for the matched charge to be u
 | K3, matching works | **Pass**, 210.4 against 942.3 (ratio 0.22, under 0.25) |
 | K4, longevity leads | **Pass**, 282.5 of 298.6 diversified life SCR |
 | K5, context | Cover 0.94 against the industry median of 1.8. Not a test: the R400 million was chosen before the run |
+
+## Added: key-rate matching (amendment of 26 October 2026)
+
+Set out in the protocol after the main run, and run once. The annuities are matched on value and on the key-rate DV01s at 5, 10, 20 and 30 years, with non-negative holdings in every bond of their kind. Nothing else changes: the BEL and the risk margin are the same to the rand. Output: `research/results/keyrate_v3.json`, from `research/keyrate_v3.py`.
+
+| | Two bonds, duration (main) | Key rates |
+| --- | --- | --- |
+| Inflation-linked holdings | I2038, I2043 | I2031, I2038, I2043, I2058, R210 |
+| Fixed-rate holdings | R2035, R209 | R188, R2033, R2037, R2047, R2053 |
+| Interest, real | 192.6 (rates down) | 56.8 (rates down) |
+| Interest, nominal | 49.1 (rates down) | 51.9 (rates up) |
+| Interest, diversified | 210.4 | 86.0 |
+| BSCR | 406.0 | 330.8 |
+| **SCR** | **423.5** | **348.2** |
+| **Cover on R400 million** | **0.94** | **1.15** |
+
+Real key-rate DV01 (R thousand per basis point) at 5 / 10 / 20 / 30 years: income 398 / 645 / 671 / 755. Two-bond portfolio 192 / 1,593 / 684 / 0. Key-rate portfolio matches all four.
+
+- **K6, key rates beat duration: pass.** The interest charge falls by 59%, and the company covers its SCR on the same R400 million, without new capital.
+- **The 30-year gap was most of the real charge.** I2058, the longest inflation-linked bond, now carries R757 million, and the real charge falls from R192.6 to R56.8 million.
+- **The nominal charge moves rather than falls.** A fall in nominal rates is now a gain of R31.9 million. The charge comes from rates rising instead, and mostly not from the annuities. The funeral line loses R30.2 million: its future premiums are worth less. Expenses rise by R18.5 million across both lines, because higher nominal rates with the real curve held raise breakeven inflation to 12.4%.
+- **Longevity is what is left.** Its R282.5 million standalone charge is 95% of the diversified life SCR, and life is now 78% of life and market risk added together (298.6 of 384.6). Cover of 1.5 would need R522 million and the industry median of 1.8 R627 million. The next lever is longevity risk, through reinsurance, which this release does not model.
 
 ## The funeral table
 

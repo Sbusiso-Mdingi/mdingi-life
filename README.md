@@ -32,7 +32,7 @@ mdingilife/   data, models (B0, LC, CBD, RH), Kannisto tail, annuity factors, sc
               sam.py: SAM shocked curves, the monthly projection and the correlation aggregation
 research/     fetch, coverage, backtest, annuities, export; PROTOCOL.md and RESULTS.md
               treasury, curves, annuities_v2; PROTOCOL_v2.md and RESULTS_v2.md
-              book_v3, balance_v3; PROTOCOL_v3.md and RESULTS_v3.md
+              book_v3, balance_v3, keyrate_v3; PROTOCOL_v3.md and RESULTS_v3.md
 tests/        every model and formula on simulated data with known answers
 service/      FastAPI app serving the results
 dashboard/    Vite front end, embedded at mdingi.co.za
@@ -79,6 +79,8 @@ v3 values an invented book on the SAM standard formula, on v2's curves and v1's 
   --deaths data/raw/statssa/mcd_deaths.csv --population data/raw/statssa/wpp_population.csv
 .venv/bin/python -m research.balance_v3 \
   --deaths data/raw/statssa/mcd_deaths.csv --population data/raw/statssa/wpp_population.csv
+.venv/bin/python -m research.keyrate_v3 \
+  --deaths data/raw/statssa/mcd_deaths.csv --population data/raw/statssa/wpp_population.csv   # the amendment
 ```
 
 Without `--source` the v1 scripts run on UN WPP 2024, the comparison run.
