@@ -20,10 +20,6 @@
   /* Series: validated with the dataviz palette check on this surface, light and dark. */
   --men: #2f5f9e;
   --women: #a8741c;
-  /* Model identity in the rolling-origin panel; validated against both surfaces. */
-  --m-lc: #7b5ea7;
-  --m-cbd: #0b8f84;
-  --m-rh: #c0502f;
   --font-sans: "Archivo", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, monospace;
   --font-serif: "Newsreader", ui-serif, Georgia, serif;

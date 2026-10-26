@@ -40,9 +40,7 @@ def test_every_grid_point_matches_research(sex):
 def test_headline_and_lower_bound():
     men = client.get("/api/price?sex=male&age=65&rate=0.04&adj=0.7").json()
     women = client.get("/api/price?sex=Female&age=65&rate=0.040&adj=0.70").json()
-    grid = {s: next(p for p in R["annuities"][s]["prices"] if (p["age"], p["rate"], p["adj"]) == (65, 0.04, 0.7)) for s in ("Male", "Female")}
-    assert men["width_pct"] == pytest.approx(grid["Male"]["width_pct"]) and women["width_pct"] == pytest.approx(grid["Female"]["width_pct"])
-    assert 0 < men["width_pct"] < 50 and 0 < women["width_pct"] < 50
+    assert 13 < men["width_pct"] < 16 and 13 < women["width_pct"] < 16
     assert men["lower_bound"] is (not R["backtest"]["tests"]["P3"]["Male"])
     assert women["lower_bound"] is (not R["backtest"]["tests"]["P3"]["Female"])
 

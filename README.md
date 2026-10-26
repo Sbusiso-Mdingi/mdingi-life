@@ -20,7 +20,7 @@ Built in releases. Each one stands on its own and feeds the next.
 
 1. **Data.** Registered deaths by single age and sex (Stats SA, *Mortality and causes of death*, P0309.3) over mid-year population estimates (P0302) as exposure, 1997 onwards. UN World Population Prospects 2024 single-age life tables as a cross-check. Under-registration at old ages and the closing age group are handled explicitly, not hidden.
 2. **Models.** Lee-Carter as the baseline, with Cairns-Blake-Dowd and Renshaw-Haberman as challengers. South African mortality rose with HIV until about 2006, fell with antiretroviral treatment, then spiked with Covid-19. A single-trend model was not built for that, and the backtest is designed to show how badly it copes.
-3. **Backtest.** Models fitted on data up to a jump-off year and scored on the years after it, against a no-improvement baseline. Rules and pass marks go in `research/PROTOCOL.md` before the first fit. A rolling-origin check then refits at every jump-off from 2009 to 2016, to see whether the chosen model's win survives more than one test block, and prices a blend of the models weighted by their rolling record.
+3. **Backtest.** Models fitted on data up to a jump-off year and scored on the years after it, against a no-improvement baseline. Rules and pass marks go in `research/PROTOCOL.md` before the first fit.
 4. **Annuity prices.** Expected present value of a life annuity at 55, 65 and 75 by sex, with a 95% interval from parameter and process uncertainty. In v1 the discount rate is flat; v2 replaces it with the fitted bond curve.
 5. **Annuitant basis.** People who buy annuities live longer than the population. v1 applies a stated level adjustment to population rates and shows how sensitive the price is to it.
 
@@ -28,7 +28,7 @@ Built in releases. Each one stands on its own and feeds the next.
 
 ```
 mdingilife/   data, models (B0, LC, CBD, RH), Kannisto tail, annuity factors, scores, bootstrap
-research/     fetch, coverage, backtest, rolling, annuities, export; PROTOCOL.md and RESULTS.md
+research/     fetch, coverage, backtest, annuities, export; PROTOCOL.md and RESULTS.md
 tests/        every model and formula on simulated data with known answers
 service/      FastAPI app serving the results
 dashboard/    Vite front end, embedded at mdingi.co.za
@@ -42,7 +42,6 @@ python3.12 -m venv .venv && .venv/bin/pip install -r requirements.txt
 .venv/bin/python -m research.coverage     # years, ages and holes; no rates
 .venv/bin/python -m research.backtest     # these three refuse to run until
 .venv/bin/python -m research.annuities    # PROTOCOL.md is frozen at a commit
-.venv/bin/python -m research.rolling      # rolling origins and the blended price
 .venv/bin/python -m research.export
 ```
 
@@ -56,7 +55,7 @@ The published results run on Stats SA registered deaths. The DataFirst unit reco
   --deaths data/raw/statssa/mcd_deaths.csv --population data/raw/statssa/wpp_population.csv
 ```
 
-`research.annuities`, `research.rolling` and `research.export` take the same three flags.
+`research.annuities` and `research.export` take the same three flags.
 
 Without `--source` the scripts run on UN WPP 2024, the comparison run.
 

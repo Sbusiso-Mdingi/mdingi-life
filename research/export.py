@@ -4,8 +4,7 @@ Also adds what the dashboard draws: life expectancy at birth and at 65 by year f
 of period life expectancy at 65 from the production fit (same model, window, bootstrap and seed offset style as
 annuities.py), with the observed series, Covid years included, to set against it.
 
-It bundles the rolling-origin backtest and the blended price where rolling.py has written them. With --source statssa
-it also bundles the comparison with the WPP run: annuity prices from each run in COMPARE that
+With --source statssa it also bundles the comparison with the WPP run: annuity prices from each run in COMPARE that
 exists, the completeness of registration and the WPP/Stats SA population check.
 
 Refuses to run until the protocol is frozen.
@@ -45,23 +44,7 @@ def compare() -> dict:
                             for s in data.SEXES}})
     table = lambda name: (lambda t: {"years": t.index.tolist(), **{s: t[s].tolist() for s in data.SEXES}})(
         pd.read_csv(OUT / name, index_col=0))
-    out = {"runs": runs, "completeness": table("completeness.csv"), "exposure": table("exposure_check.csv")}
-    if (OUT / "rolling_wpp.json").exists():
-        out["rolling_wpp"] = rolling("wpp")
-    return out
-
-
-def rolling(source: str) -> dict | None:
-    """The rolling-origin summaries, without the per-origin scores, with lists split from the per-candidate maps."""
-    f = OUT / f"rolling_{source}.json"
-    if not f.exists():
-        return None
-    out = {k: v for k, v in json.loads(f.read_text()).items() if k != "scores"}
-    for s in data.SEXES:
-        b, p = out["by_sex"][s], out["reprice"][s]
-        out["by_sex"][s] = {"winners": b.pop("_winner_by_origin"), "candidates": b}
-        out["reprice"][s] = {"jump_offs": p.pop("jump_offs"), "quotes": p}
-    return out
+    return {"runs": runs, "completeness": table("completeness.csv"), "exposure": table("exposure_check.csv")}
 
 
 def e65(log_m: np.ndarray, ages: np.ndarray) -> np.ndarray:
@@ -120,9 +103,6 @@ def main() -> None:
     out = {"source": a.source, "protocol": frozen, "backtest": bt, "annuities": an, "rates": rates,
            "fan": fans}
     out["history"] = history()
-    out["rolling"] = rolling(a.source)
-    blend = OUT / f"annuities_{a.source}_blend.json"
-    out["blend"] = json.loads(blend.read_text()) if blend.exists() else None
     if a.source == "statssa":
         out["compare"] = compare()
     (data.ROOT / "data" / "research.json").write_text(json.dumps(out, default=float))

@@ -16,19 +16,6 @@ export type Fan = {
 export type Run = { key: string; label: string; exploratory: boolean } & Record<Sex, { model: string; jump_off: number; prices: Price[] }>;
 export type BySex = { years: number[] } & Record<Sex, number[]>;
 
-export type Candidate = { deviance: number; wins: number; abs_annuity_error: number; coverage: number };
-export type Rolling = {
-  origins: number[];
-  horizon: number;
-  chosen: Record<Sex, string>;
-  windows: Record<string, string>;
-  by_sex: Record<Sex, { winners: string[]; candidates: Record<string, Candidate> }>;
-  readings: { R1: Record<Sex, boolean>; R2: Record<Sex, boolean>; lowest: Record<Sex, string> };
-  weights: Record<Sex, Record<string, number>>;
-  reprice: Record<Sex, { jump_offs: number[]; quotes: Record<string, { price: number | null; failed: number }[]> }>;
-};
-export type Blend = Record<Sex, { model: string; chosen: string; jump_off: number; prices: Price[] }>;
-
 export type Research = {
   source: string;
   protocol: string;
@@ -40,9 +27,7 @@ export type Research = {
   annuities: Record<Sex, { model: string; jump_off: number; prices: Price[] }>;
   fan: Record<Sex, Fan>;
   history?: { years: number[]; e0: Record<Sex, number[]>; e65: Record<Sex, number[]> };
-  compare?: { runs: Run[]; completeness: BySex; exposure: BySex; rolling_wpp?: Rolling };
-  rolling?: Rolling | null;
-  blend?: Blend | null;
+  compare?: { runs: Run[]; completeness: BySex; exposure: BySex };
 };
 
 export type Quote = Price & { sex: Sex; model: string; jump_off: number; lower_bound: boolean };

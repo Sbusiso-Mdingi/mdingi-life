@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { api, type Price, type Quote, type Research, type Rolling, type Sex } from "./api";
+import { api, type Price, type Quote, type Research, type Sex } from "./api";
 import { IntervalChart, YearChart, type Band, type Interval, type Points, type Series } from "./charts";
 import { SEX_LABEL, num, pct, thousands } from "./format";
 
@@ -11,12 +11,10 @@ const ADJS = [0.6, 0.7, 0.8];
 const REPO = "https://github.com/Sbusiso-Mdingi/mdingi-life";
 const MODEL_NAMES: Record<string, string> = { B0: "No improvement", LC: "Lee-Carter", CBD: "Cairns-Blake-Dowd", RH: "Renshaw-Haberman" };
 const WINDOW_START: Record<string, number> = { full: 1997, "post-peak": 2006 };
-const WINDOW_TEXT: Record<string, string> = { full: "from 1997", "post-peak": "from 2006", rolling: "last 10 years", "last three": "last three years" };
 const modelLabel = (k: string) => {
   const [name, ...rest] = k.split(" ");
-  return `${MODEL_NAMES[name] ?? name}, ${WINDOW_TEXT[rest.join(" ")] ?? rest.join(" ")}`;
+  return `${MODEL_NAMES[name] ?? name}, ${rest.join(" ") === "full" ? "from 1997" : "from 2006"}`;
 };
-const MODEL_COLOR: Record<string, string> = { B0: "var(--muted-foreground)", LC: "var(--m-lc)", CBD: "var(--m-cbd)", RH: "var(--m-rh)" };
 
 const find = (prices: Price[], age: number, rate: number, adj: number) =>
   prices.find((p) => p.age === age && Math.abs(p.rate - rate) < 1e-9 && Math.abs(p.adj - adj) < 1e-9)!;
@@ -162,7 +160,6 @@ export function App({ embedded }: { embedded: boolean }) {
       {r.history && <History r={r} />}
       <FanPanel r={r} />
       <Backtest r={r} />
-      {r.rolling && <RollingPanel r={r} />}
       <Explorer r={r} />
       {r.compare && <Sources r={r} />}
       <Sensitivity r={r} />
@@ -504,279 +501,6 @@ function Backtest({ r }: { r: Research }) {
         Annuity error is the average miss on the price at 65. The protocol chooses on deviance alone: {SEXES.map((s) => `${modelLabel(chosen[s])} for ${SEX_LABEL[s].toLowerCase()}`).join(", ")}.{" "}
         {MODEL_NAMES.LC}'s bands caught only {pct(v[lc].Male.coverage, 0)} and {pct(v[lc].Female.coverage, 0)}.
       </p>
-    </section>
-  );
-}
-
-function RollingPanel({ r }: { r: Research }) {
-  const g = r.rolling!;
-  const [sex, setSex] = useState<Sex>("Male");
-  const n = g.origins.length;
-  const first = g.origins[0];
-  const last = g.origins[n - 1];
-  const cand = (s: Sex) => g.by_sex[s].candidates;
-  const keys = Object.keys(cand("Male")).sort((a, b) => cand("Male")[a].deviance + cand("Female")[a].deviance - cand("Male")[b].deviance - cand("Female")[b].deviance);
-  const fam = (k: string) => k.split(" ")[0];
-  const held = SEXES.every((s) => g.readings.R1[s]);
-  const family = SEXES.every((s) => fam(g.readings.lowest[s]) === fam(g.chosen[s]));
-  const title = held
-    ? `The chosen model holds up over ${n} jump-offs`
-    : family
-      ? `Over ${n} jump-offs the model holds up, its fitting window less so`
-      : `Over ${n} jump-offs, the protocol's choice is not the best`;
-  const wins = (s: Sex) => cand(s)[g.chosen[s]].wins;
-  const famWins = (s: Sex) => g.by_sex[s].winners.filter((w) => fam(w) === fam(g.chosen[s])).length;
-  const rp = g.reprice[sex];
-  const quoted = Object.keys(rp.quotes);
-  const series: Series[] = quoted.map((k) => ({
-    key: k,
-    label: modelLabel(k),
-    color: MODEL_COLOR[fam(k)],
-    xs: rp.jump_offs,
-    ys: rp.quotes[k].map((q) => q.price),
-    dash: fam(k) === "B0",
-  }));
-  const dots: Points[] = quoted.map((k) => ({
-    key: `${k}-pts`,
-    label: "",
-    color: MODEL_COLOR[fam(k)],
-    xs: rp.jump_offs.filter((_, i) => rp.quotes[k][i].price != null),
-    ys: rp.quotes[k].flatMap((q) => (q.price == null ? [] : [q.price])),
-  }));
-  const gaps = quoted.flatMap((k) => {
-    const miss = rp.jump_offs.filter((_, i) => rp.quotes[k][i].price == null);
-    return miss.length ? [`${modelLabel(k)} (${miss[0]}${miss.length > 1 ? ` to ${miss[miss.length - 1]}` : ""})`] : [];
-  });
-  const swing = (k: string) => {
-    const v = rp.quotes[k].flatMap((q) => (q.price == null ? [] : [q.price]));
-    return v.length > 1 ? (Math.max(...v) - Math.min(...v)) / Math.min(...v) : 0;
-  };
-  const chosenKey = g.chosen[sex];
-  const b = r.blend;
-  const blendRows: Interval[] = b
-    ? SEXES.flatMap((s) =>
-        AGES.flatMap((a) => {
-          const c = find(r.annuities[s].prices, a, 0.04, 0.7);
-          const m = find(b[s].prices, a, 0.04, 0.7);
-          return [
-            { key: `${s}${a}c`, label: `${SEX_LABEL[s]}, ${a} · chosen`, color: COLOR[s], lo: c.lo, median: c.median, hi: c.hi },
-            { key: `${s}${a}b`, label: `${SEX_LABEL[s]}, ${a} · blend`, color: COLOR[s], lo: m.lo, median: m.median, hi: m.hi, active: true },
-          ];
-        }),
-      )
-    : [];
-  const w = (s: Sex) => Object.entries(g.weights[s]).map(([k, v]) => `${k} ${pct(v, 0)}`).join(", ");
-  const bw = (s: Sex) => find(b![s].prices, 65, 0.04, 0.7);
-  const other = r.compare?.rolling_wpp;
-  const rank = (x: Rolling, s: Sex) => {
-    const c = x.by_sex[s].candidates;
-    return Object.keys(c).sort((p, q) => c[p].deviance - c[q].deviance).indexOf(x.chosen[s]) + 1;
-  };
-  return (
-    <section className="panel" id="rolling">
-      <div className="panel-head">
-        <div>
-          <p className="eyebrow">
-            Rolling origins · jump-off {first} to {last}, each scored {g.horizon} years ahead · added after validation
-          </p>
-          <h2 className="serif">{title}</h2>
-        </div>
-      </div>
-      <p className="plain">
-        One three-year validation block chose the model above. Here every jump-off from {first} to {last} is refitted and scored, for ten candidates:
-        each model fitted from 1997, from 2006, and on a rolling 10-year window, plus no improvement. This is a robustness check written into the
-        protocol before any rolling fit. It changes nothing above.
-      </p>
-      <ul className="tests">
-        <li>
-          <div className="test-head">
-            <span className="mono small">R1</span>
-            <strong>The chosen model has the lowest rolling deviance of the ten</strong>
-            {SEXES.map((s) => (
-              <Verdict key={s} pass={g.readings.R1[s]} who={SEX_LABEL[s]} />
-            ))}
-          </div>
-          <p className="plain" style={{ marginLeft: 34 }}>
-            {SEXES.map((s) =>
-              g.readings.R1[s]
-                ? `${SEX_LABEL[s]}: ${modelLabel(g.chosen[s])} is lowest, best at ${wins(s)} of ${n} jump-offs. `
-                : `${SEX_LABEL[s]}: ${modelLabel(g.readings.lowest[s])} is lower; the chosen ${modelLabel(g.chosen[s])} is best at ${wins(s)} of ${n} jump-offs. `,
-            )}
-            {family ? `${MODEL_NAMES[fam(g.chosen.Male)]} on some window is best at ${famWins("Male")} of ${n} for men and ${famWins("Female")} of ${n} for women.` : ""}
-          </p>
-        </li>
-        <li>
-          <div className="test-head">
-            <span className="mono small">R2</span>
-            <strong>Its 95% bands catch at least 90% of rates across all jump-offs</strong>
-            {SEXES.map((s) => (
-              <Verdict key={s} pass={g.readings.R2[s]} who={SEX_LABEL[s]} />
-            ))}
-          </div>
-          <p className="plain" style={{ marginLeft: 34 }}>
-            They caught {pct(cand("Male")[g.chosen.Male].coverage, 0)} for men and {pct(cand("Female")[g.chosen.Female].coverage, 0)} for women.{" "}
-            {SEXES.every((s) => Object.entries(cand(s)).every(([k, c]) => fam(k) === "B0" || c.coverage < 0.9))
-              ? "No candidate reaches 90%. The bands hold process uncertainty only, and the shortfall is not a one-off."
-              : ""}
-          </p>
-        </li>
-      </ul>
-
-      <div className="table-wrap" style={{ marginTop: 18 }}>
-        <table>
-          <thead>
-            <tr>
-              <th>Model</th>
-              <th>Window</th>
-              <th className="num">Deviance, men</th>
-              <th className="num">Deviance, women</th>
-              <th className="num">Best of {n}, men</th>
-              <th className="num">Best of {n}, women</th>
-              <th className="num">Coverage, men</th>
-              <th className="num">Coverage, women</th>
-            </tr>
-          </thead>
-          <tbody>
-            {keys.map((k) => {
-              const [name, ...rest] = k.split(" ");
-              const isChosen = SEXES.some((s) => g.chosen[s] === k);
-              const isLowest = SEXES.some((s) => g.readings.lowest[s] === k);
-              return (
-                <tr key={k} className={isChosen ? "final" : undefined}>
-                  <td>
-                    {MODEL_NAMES[name] ?? name}
-                    {isChosen && <span className="tag">Chosen</span>}
-                    {isLowest && <span className="tag">Lowest{SEXES.filter((s) => g.readings.lowest[s] === k).length === 1 ? `, ${SEX_LABEL[SEXES.find((s) => g.readings.lowest[s] === k)!].toLowerCase()}` : ""}</span>}
-                  </td>
-                  <td className="muted">{WINDOW_TEXT[rest.join(" ")]}</td>
-                  {SEXES.map((s) => (
-                    <td key={s} className="num">
-                      {thousands(cand(s)[k].deviance)}
-                    </td>
-                  ))}
-                  {SEXES.map((s) => (
-                    <td key={s} className="num">
-                      {cand(s)[k].wins}
-                    </td>
-                  ))}
-                  {SEXES.map((s) => (
-                    <td key={s} className="num">
-                      {name === "B0" ? "n/a" : pct(cand(s)[k].coverage, 0)}
-                    </td>
-                  ))}
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
-      <p className="note">
-        Deviance is summed over the {n} jump-offs and {g.horizon} years ahead of each, ages 50 to 89.
-        {other
-          ? ` On UN WPP deaths the same check is harsher: the protocol's ${modelLabel(other.chosen.Male)} ranks ${rank(other, "Male")} of 10 for men and ${rank(other, "Female")} of 10 for women, and ${modelLabel(other.readings.lowest.Male)} is lowest${other.readings.lowest.Female === other.readings.lowest.Male ? " for both" : " for men"}.`
-          : ""}
-      </p>
-
-      <div className="panel-head" style={{ marginTop: 28 }}>
-        <div>
-          <p className="eyebrow">Repricing · a life aged 65 in the year after each jump-off, 4%, factor 0.7</p>
-          <h3 className="serif">What each model would have quoted, refitted every year</h3>
-        </div>
-        <Segmented label="Sex" value={sex} onChange={setSex} options={SEXES.map((s) => ({ id: s, label: SEX_LABEL[s] }))} />
-      </div>
-      <Legend items={quoted.map((k) => ({ label: modelLabel(k), color: MODEL_COLOR[fam(k)], kind: fam(k) === "B0" ? "dash" : "line" }))} />
-      <YearChart label={`Annuity price at 65 by jump-off year and model, ${SEX_LABEL[sex].toLowerCase()}`} series={series} points={dots} fmt={f2} height={280} />
-      <p className="note">
-        Median of 5,000 simulated paths per quote, process uncertainty only. {modelLabel(chosenKey)} moves {pct(swing(chosenKey), 0)} between its lowest
-        and highest quote, no improvement {pct(swing(quoted.find((k) => fam(k) === "B0")!), 0)}.
-        {gaps.length
-          ? ` No quote for ${gaps.join(", ")}: fitted on only a few years from 2006, the loading on the oldest ages comes out negative, so rates there rise as the rest improve and pass 1 before 89.`
-          : ""}
-      </p>
-
-      {b && (
-        <>
-          <div className="panel-head" style={{ marginTop: 28 }}>
-            <div>
-              <p className="eyebrow">Blended price · bought in 2026, 4%, factor 0.7</p>
-              <h3 className="serif">
-                {SEXES.every((s) => bw(s).width_pct > find(r.annuities[s].prices, 65, 0.04, 0.7).width_pct)
-                  ? "Weighting the models by their rolling record widens the interval"
-                  : "Weighting the models by their rolling record"}
-              </h3>
-            </div>
-          </div>
-          <Legend items={SEXES.map((s) => ({ label: SEX_LABEL[s], color: COLOR[s] }))} />
-          <IntervalChart label="Chosen-model and blended annuity prices by sex and age" rows={blendRows} fmt={f2} groups={2} />
-          <p className="note">
-            The blend pools each model's production paths in proportion to 1 / its rolling deviance: {w("Male")} for men, {w("Female")} for women. At 65 it
-            prices {f2(bw("Male").median)} [{f2(bw("Male").lo)}, {f2(bw("Male").hi)}] for men and {f2(bw("Female").median)} [{f2(bw("Female").lo)},{" "}
-            {f2(bw("Female").hi)}] for women, an interval {num(bw("Male").width_pct, 0)}% and {num(bw("Female").width_pct, 0)}% wide against{" "}
-            {num(find(r.annuities.Male.prices, 65, 0.04, 0.7).width_pct, 0)}% and {num(find(r.annuities.Female.prices, 65, 0.04, 0.7).width_pct, 0)}% for the
-            chosen model.{" "}
-            {SEXES.every((s) => bw(s).width_pct > find(r.annuities[s].prices, 65, 0.04, 0.7).width_pct)
-              ? "It carries some of the model risk the single model leaves out. "
-              : ""}
-            It is shown next to the chosen price, not in its place.
-          </p>
-          <TableView>
-            <table>
-              <thead>
-                <tr>
-                  <th>Sex</th>
-                  <th className="num">Age</th>
-                  <th className="num">Chosen</th>
-                  <th className="num">Blend</th>
-                </tr>
-              </thead>
-              <tbody>
-                {SEXES.flatMap((s) =>
-                  AGES.map((a) => {
-                    const c = find(r.annuities[s].prices, a, 0.04, 0.7);
-                    const m = find(b[s].prices, a, 0.04, 0.7);
-                    return (
-                      <tr key={`${s}${a}`}>
-                        <td>{SEX_LABEL[s]}</td>
-                        <td className="num">{a}</td>
-                        <td className="num">
-                          {f2(c.median)} [{f2(c.lo)}, {f2(c.hi)}]
-                        </td>
-                        <td className="num">
-                          {f2(m.median)} [{f2(m.lo)}, {f2(m.hi)}]
-                        </td>
-                      </tr>
-                    );
-                  }),
-                )}
-              </tbody>
-            </table>
-            <table style={{ marginTop: 16 }}>
-              <thead>
-                <tr>
-                  <th>Jump-off</th>
-                  {quoted.map((k) => (
-                    <th key={k} className="num">
-                      {modelLabel(k)}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {rp.jump_offs.map((y, i) => (
-                  <tr key={y}>
-                    <td>{y}</td>
-                    {quoted.map((k) => (
-                      <td key={k} className="num">
-                        {rp.quotes[k][i].price == null ? `none (${pct(rp.quotes[k][i].failed, 0)} of paths fail)` : f2(rp.quotes[k][i].price!)}
-                      </td>
-                    ))}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </TableView>
-        </>
-      )}
     </section>
   );
 }
