@@ -22,7 +22,8 @@ RATES, ADJ = (0.02, 0.04, 0.06), (0.6, 0.7, 0.8)
 REFITS, PATHS = 500, 5000
 
 
-def price(r: data.Rates, model: str, window: str, rng) -> dict:
+def simulate(r: data.Rates, model: str, window: str, rng):
+    """The production forecast, extended to TOP: (log rates, ages, first forecast year of 2026, jump-off year)."""
     name = model.split()[0]
     years = [y for y in r.years if y >= WINDOWS[window] and y not in COVID]
     r = r.sub(AGES, years)
@@ -31,6 +32,11 @@ def price(r: data.Rates, model: str, window: str, rng) -> dict:
     h = start + kannisto.TOP - min(ENTRY_AGES) + 1
     sims = bootstrap.simulate(MODELS[name], r, h, REFITS, PATHS, rng)
     ages, full = kannisto.extend(sims, r.ages)
+    return full, ages, start, jump
+
+
+def price(r: data.Rates, model: str, window: str, rng) -> dict:
+    full, ages, start, jump = simulate(r, model, window, rng)
     out = {"jump_off": jump, "prices": []}
     for x in ENTRY_AGES:
         m = annuity.cohort(full, ages, x, start)

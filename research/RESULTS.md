@@ -175,4 +175,4 @@ So the 23% headline gap at 65 is mostly model choice and jump-off. The pre-regis
 ## Still to do
 
 - Rerun on Stats SA single-age mid-year estimates if they are ever published by single age (SuperWEB2 holds only the census counts, checked above). Until then, an exposure built from the 2011 and 2022 censuses is the alternative.
-- v2: replace the flat discount rate with the fitted government bond curve.
+- v2: replace the flat discount rate with the fitted government bond curve. Done: [RESULTS_v2.md](RESULTS_v2.md).

@@ -7,7 +7,7 @@ Built in releases. Each one stands on its own and feeds the next.
 | Release | Question | Status |
 | --- | --- | --- |
 | v1 Liabilities | How much does uncertainty about South African mortality move the price of a life annuity? | Run on UN WPP 2024 and on Stats SA registered deaths ([results](research/RESULTS.md)) |
-| v2 Assets | What does the SA government bond curve look like each day, and how well do the assets match the liabilities? | Planned |
+| v2 Assets | What does the SA government bond curve look like on each auction day, and how well do the assets match the liabilities? | Run on National Treasury auction results, 2010 to 2026 ([results](research/RESULTS_v2.md)) |
 | v3 Balance sheet | What is Mdingi Life's SAM solvency capital requirement, and its cover ratio today? | Planned |
 | v4 Scenarios and reporting | Economic scenario generator, IFRS 17 CSM roll-forward, ORSA-style stress tests | Planned |
 
@@ -27,8 +27,10 @@ Built in releases. Each one stands on its own and feeds the next.
 ## Layout
 
 ```
-mdingilife/   data, models (B0, LC, CBD, RH), Kannisto tail, annuity factors, scores, bootstrap
+mdingilife/   data, models (B0, LC, CBD, RH), Kannisto tail, annuity factors, scores, bootstrap;
+              curves.py: bond cash flows, LI, NS, NSS and the bootstrapped zero curve
 research/     fetch, coverage, backtest, annuities, export; PROTOCOL.md and RESULTS.md
+              treasury, curves, annuities_v2; PROTOCOL_v2.md and RESULTS_v2.md
 tests/        every model and formula on simulated data with known answers
 service/      FastAPI app serving the results
 dashboard/    Vite front end, embedded at mdingi.co.za
@@ -57,6 +59,16 @@ The published results run on Stats SA registered deaths. The DataFirst unit reco
 
 `research.annuities` and `research.export` take the same three flags.
 
+v2 runs on National Treasury's auction results. Curves exist per auction day, not per calendar day: Treasury auctions each kind of bond about weekly.
+
+```
+.venv/bin/python -m research.treasury                        # workbooks and schedules into auctions.csv and bonds.csv
+.venv/bin/python -m research.curves --period design          # chooses the curve for each kind
+.venv/bin/python -m research.curves --period validation      # once, after design
+.venv/bin/python -m research.annuities_v2 \
+  --deaths data/raw/statssa/mcd_deaths.csv --population data/raw/statssa/wpp_population.csv
+```
+
 Without `--source` the scripts run on UN WPP 2024, the comparison run.
 
 The service and dashboard read `data/research.json`, which `research.export` writes.
@@ -74,4 +86,5 @@ docker build -t mdingi-life .                  # deploy/azure.sh builds in ACR a
 ## Data sources and terms
 
 - Statistics South Africa, P0309.3 and P0302. Downloaded manually and attributed in the dashboard.
+- National Treasury, Republic of South Africa, investor.treasury.gov.za: weekly bond auction results and the Schedule of Domestic Debt. Used for non-commercial purposes with acknowledgement. The workbooks and PDFs are not redistributed; the tidy extracts `auctions.csv` and `bonds.csv` are.
 - United Nations, Department of Economic and Social Affairs, Population Division (2024). *World Population Prospects 2024*. CC BY 3.0 IGO.
