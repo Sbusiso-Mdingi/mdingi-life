@@ -4,7 +4,7 @@ Written on 26 October 2026, after v1.2 was run and reported (`RESULTS_v1.2.md`),
 
 Amended on 26 October 2026, after review and before any v1.3 code was written: the heaping check ("Seen beforehand"), the smoother's ends and convergence checks, the simulated recovery test, and an upper bound on Q2. Amended again the same day, after review and still before any code: a plausibility gate. Amended a third time the same day, before the freeze: the pre-freeze test results, including a failed recovery test, under "Reporting".
 
-Frozen at commit: (not yet frozen)
+Frozen at commit: `e4e524b44d96`
 
 ## Seen beforehand, and disclosed
 
