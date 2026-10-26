@@ -1,5 +1,5 @@
-"""Guard: nothing that fits a model runs until its protocol (research/PROTOCOL.md for v1, PROTOCOL_v2.md for v2, PROTOCOL_v3.md for v3)
-is frozen at a commit."""
+"""Guard: nothing that fits a model runs until its protocol (research/PROTOCOL.md for v1, PROTOCOL_v2.md for v2, PROTOCOL_v3.md for v3,
+PROTOCOL_v4.md for v4) is frozen at a commit."""
 from __future__ import annotations
 
 import re
@@ -11,6 +11,7 @@ from mdingilife.data import ROOT
 PROTOCOL = ROOT / "research" / "PROTOCOL.md"
 PROTOCOL_V2 = ROOT / "research" / "PROTOCOL_v2.md"
 PROTOCOL_V3 = ROOT / "research" / "PROTOCOL_v3.md"
+PROTOCOL_V4 = ROOT / "research" / "PROTOCOL_v4.md"
 LINE = re.compile(r"^Frozen at commit: `?([0-9a-f]{7,40})`?\s*$", re.M)
 
 

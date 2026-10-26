@@ -9,7 +9,7 @@ Built in releases. Each one stands on its own and feeds the next.
 | v1 Liabilities | How much does uncertainty about South African mortality move the price of a life annuity? | Run on UN WPP 2024 and on Stats SA registered deaths ([results](research/RESULTS.md)) |
 | v2 Assets | What does the SA government bond curve look like on each auction day, and how well do the assets match the liabilities? | Run on National Treasury auction results, 2010 to 2026 ([results](research/RESULTS_v2.md)) |
 | v3 Balance sheet | What is Mdingi Life's SAM solvency capital requirement, and its cover ratio today? | Run on the standard formula for an invented book of 5,000 annuities and 50,000 funeral policies ([results](research/RESULTS_v3.md)) |
-| v4 Scenarios and reporting | Economic scenario generator, IFRS 17 CSM roll-forward, ORSA-style stress tests | Planned |
+| v4 Scenarios and reporting | Over the next five years, how likely is Mdingi Life to stay covered, what does it report under IFRS 17, and which shocks would break it? | Protocol written ([plan](research/PROTOCOL_v4.md)) |
 
 ## The book
 
