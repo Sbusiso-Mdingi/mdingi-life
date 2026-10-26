@@ -72,4 +72,13 @@ On the valuation date, for the inflation-linked annuity at 65 (adjustment 0.7) a
 
 ## Changes after freezing
 
-None yet.
+### 26 October 2026: how the 100 basis point screen runs
+
+Written before any curve was fitted, to settle two things the cleaning rule left open: which curve does the screening, and whether a screened point also leaves the scores.
+
+- **The screen uses NS**, the simpler parametric curve, so that it does not depend on the model being tested. LI passes through every bond and B0 has no curve, so neither can flag a point.
+- **In date order.** On each curve date, NS is fitted on that day's window (including the day), with points already flagged left out. A bond auctioned that day whose yield NS misses by more than 100 basis points is flagged, and NS is refitted once without it.
+- **Everywhere.** A flagged point is dropped from the data: from every model's windows and from the scored auctions.
+- **The coupon dates** of each bond are taken from its final redemption date, stepping back six months at a time, because a South African government bond pays its last coupon on its redemption date. The schedules' coupon dates are checked against this and disagreements reported, not used.
+
+Reason: as frozen, a mistyped yield could stay in the LI and B0 windows and in the targets, where every model would be charged for it.
