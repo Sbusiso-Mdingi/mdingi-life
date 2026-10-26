@@ -129,7 +129,7 @@ export function FanPanel({ r }: { r: Research }) {
       <div className="panel-head">
         <div>
           <p className="eyebrow">
-            Forecast · {sameModel ? MODEL_NAMES[name] : "chosen model by sex"}, fitted {WINDOW_START[window] ?? 1997} to {jump}
+            Forecast · v1 mortality model, {sameModel ? MODEL_NAMES[name] : "chosen model by sex"}, fitted {WINDOW_START[window] ?? 1997} to {jump}
           </p>
           <h2 className="serif">How long 65-year-olds are expected to live, to {lastYear}</h2>
         </div>

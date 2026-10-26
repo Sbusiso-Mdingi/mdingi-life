@@ -221,8 +221,8 @@ export function Overview({ r, go }: { r: Research; go: Go }) {
       text: (
         <>
           The mortality forecast's 95% ranges caught fewer than 90% of the death rates that actually happened in the backtest
-          {p3.Male !== p3.Female ? ` for ${p3.Male ? "women" : "men"}` : ", for men and women"}, so every pension range on this site is a lower bound on the real
-          uncertainty.
+          {p3.Male !== p3.Female ? ` for ${p3.Male ? "women" : "men"}` : ", for men and women"}, so every pension range on this site, all from the v1 mortality model, is a lower
+          bound on the real uncertainty.
         </>
       ),
       tab: "built",
@@ -287,7 +287,7 @@ export function Overview({ r, go }: { r: Research; go: Go }) {
             <span className="num-badge">1</span>
             <h3>Pricing the pensions</h3>
             <p>
-              I forecast how long people live from 26 years of Stats SA death records, with ranges from simulated futures.
+              I forecast how long people live from 26 years of Stats SA death records, on the v1 mortality model, with ranges from simulated futures.
               {pension && " A woman of 65 who wants R10,000 a month for life, rising with inflation, would pay once:"}
             </p>
             {pension && <div className="figure">{randFull(Math.round(pension / 100) * 100)}</div>}
@@ -375,7 +375,7 @@ export function Overview({ r, go }: { r: Research; go: Go }) {
 
 // Get a quote -------------------------------------------------------------------------------------------------------
 
-// The mortality model version that prices each sex. Both stay on v1 until a revision passes its frozen tests.
+// The mortality model version that prices each sex: v1 for both, final after v1.1 to v1.3 failed (research/RESULTS_v1.3.md).
 const PRICED_ON: Record<Sex, string> = { Male: "v1", Female: "v1" };
 
 export function Quote({ r }: { r: Research }) {
@@ -507,7 +507,7 @@ export function Quote({ r }: { r: Research }) {
         <p className="note">
           The price depends on how long you will live, and nobody knows that for sure. I forecast it from Stats SA death records and simulate thousands of
           possible futures; the bar is the middle 95% of them. Women live longer, so their pensions cost more. Men's prices use the{" "}
-          {PRICED_ON.Male} mortality model and women's the {PRICED_ON.Female} model. Three revisions (v1.1 to v1.3) were tested and none passed, so v1 prices both, and its ranges are lower bounds.
+          {PRICED_ON.Male} mortality model and women's the {PRICED_ON.Female} model. Three revisions (v1.1 to v1.3) were tested and none passed, so v1 prices both, and its ranges are lower bounds. Of the versions tested, v1 for both sexes is the only one that passes the plausibility gate, applied to both sexes together: women's pensions cost more than men's, and life expectancy at 65 rises for both.
         </p>
         <LowerBound />
         <div className="callout">
@@ -593,7 +593,8 @@ export function Customers({ r }: { r: Research }) {
           book_v3.py
         </a>
         : pensions bought at 55 to 75 with incomes spread around R60,000 a year, and funeral policies taken out at around 38 for R10,000 to R30,000 of cover.
-        The shapes are my choices, not taken from any insurer's data.
+        The shapes are my choices, not taken from any insurer's data. Funeral premiums are priced on a table of 2017 to 2019 death rates; the life
+        expectancy forecast below is the v1 mortality model, which prices the pensions.
       </PageHead>
 
       <div className="grid two">
@@ -834,7 +835,8 @@ export function Capital({ r }: { r: Research }) {
     <>
       <PageHead kicker="Capital" title="Is there enough capital?">
         The Prudential Authority asks every insurer to hold enough capital to survive a 1-in-200 year: the solvency capital requirement. Solvency cover is the
-        capital held divided by that requirement, and it has to be at least 100%.
+        capital held divided by that requirement, and it has to be at least 100%. The pensions are valued on the v1 mortality model; funeral claims on a
+        table of 2017 to 2019 death rates.
       </PageHead>
 
       <div className="grid three">
@@ -982,6 +984,7 @@ const Frozen = ({ hash, when }: { hash: string; when: string }) => (
 export function Built({ r }: { r: Research }) {
   const t = r.backtest.tests;
   const v2 = r.v2, v3 = r.v3;
+  const cross = crossing(r);
   const both = (x: Record<Sex, boolean>) => SEXES.map((s) => <Verdict key={s} pass={x[s]} who={SEX_LABEL[s]} />);
   const checks: { claim: string; plain: string; verdicts: ReactNode; code?: boolean }[] = [
     { claim: "Death rates keep improving", plain: "The forecast beat a no-improvement baseline on 2017 to 2019.", verdicts: both(t.P1) },
@@ -1068,7 +1071,7 @@ export function Built({ r }: { r: Research }) {
             </svg>
           </div>
           <h3>Forecasting how long people live</h3>
-          <p>Four mortality models backtested on Stats SA registered deaths, 1997 to 2022. The winner prices the pensions, with ranges from 5,000 simulated futures.</p>
+          <p>Four mortality models backtested on Stats SA registered deaths, 1997 to 2022. The winner, v1, prices the pensions, with ranges from 5,000 simulated futures.</p>
           <p>
             <a href={doc("PROTOCOL.md")} target="_blank" rel="noreferrer">
               Plan
@@ -1189,7 +1192,10 @@ export function Built({ r }: { r: Research }) {
               Three revisions, each planned and frozen before it ran: completeness scaling, overdispersion and an average of models (v1.1); windows by sex
               (v1.2); a cohort term smoothed over birth years (v1.3, <Frozen hash="e4e524b44d96" when="26 Oct 2026" />). The 2017 to 2019 hold-out guided all
               three, so v1.3 added a second backtest origin. None passed both its tests and a check that women's pensions cost more than men's and that life
-              expectancy rises. v1.3 was the last. Both sexes stay on v1.{" "}
+              expectancy rises. v1.3's smoothing removed the heaping spikes and the jump-off (the step in life expectancy at 65 from 2019 to 2020, with the period trend held,
+              fell from 0.17 years to 0.00 for men and from 0.25 to 0.04 for women), but it cost most of the in-sample fit: deviance rose from 811 to 3,812 for men and
+              from 2,344 to 20,201 for women. Targeted interpolation of the round-year cohorts is untried, and left as future work. v1.3 was the last. Both
+              sexes stay on v1.{" "}
               <a href={doc("RESULTS_v1.3.md")} target="_blank" rel="noreferrer">
                 Results
               </a>
@@ -1199,7 +1205,10 @@ export function Built({ r }: { r: Research }) {
               Added after seeing the first result. The levels and the rule for investing the extra were written at <Commit hash="28e4b67" when="14:51" />,
               before any level was run. After R600m to R1,000m had run, I stopped at R500m rather than narrowing to the nearest R25m, and report the crossing
               as an interval (<Commit hash="55fbcb9" when="16:15" />, before the R500m result). Every level used the same 1,000 futures, regenerated from
-              the same seed on the same calibration, and the same five disasters. Like every capital result on this site, it uses the v1 mortality model.
+              the same seed on the same calibration, and the same five disasters. {cross &&
+                `${randM(cross.lo.own_funds)} kept ${pct(cross.lo.share_covered, 1)} of futures covered, so the crossing is reported as lying between ${randM(cross.lo.own_funds)} and ${randM(cross.hi.own_funds)}. `}
+              Like every capital result on this site, it is final, on the v1
+              mortality model.
             </li>
           </ul>
         </div>
@@ -1353,7 +1362,7 @@ export function Future({ r }: { r: Research }) {
     <>
       <PageHead kicker="The next five years" title="Does the cover hold up?">
         A look five years ahead, of the kind the regulator asks every insurer for: a thousand possible paths for interest rates and inflation, and five named
-        disasters, each run through the customers, the bonds and the capital, year by year.
+        disasters, each run through the customers, the bonds and the capital, year by year. The pensions are valued on the v1 mortality model throughout.
       </PageHead>
 
       <div className="grid three">
@@ -1600,6 +1609,8 @@ function CapitalCurve({ c }: { c: NonNullable<NonNullable<Research["v4"]>["capit
   const hit = L.find((x) => x.own_funds === REFERENCE && x.share_covered >= 0.95) ?? L.find((x) => x.share_covered >= 0.95);
   const below = hit && [...L].reverse().find((x) => x.own_funds < hit.own_funds && x.share_covered < 0.95);
   const names = Object.keys(L[0].stresses);
+  const ref = L.find((x) => x.own_funds === REFERENCE);
+  const cleared = ref ? names.filter((n) => ref.stresses[n] >= 1).length : 0;
   return (
     <section className="panel">
       <div className="panel-head">
@@ -1627,15 +1638,21 @@ function CapitalCurve({ c }: { c: NonNullable<NonNullable<Research["v4"]>["capit
         height={280}
       />
       <p className="note">
-        I added this after seeing that only {pct(L[0].share_covered, 0)} of futures stay covered at {randM(L[0].own_funds)}, so it is an exploration, not a
-        test set beforehand. Every level uses the same 1,000 futures, regenerated from the same seed, and the same five disasters; each extra rand is invested in
-        the same mix of bonds and bills as today's assets.{" "}
+        I added this after seeing that only {pct(L[0].share_covered, 0)} of futures stay covered at {randM(L[0].own_funds)}, so it is exploratory, designed
+        after the first result was seen, not a test set beforehand. Every level uses the same 1,000 futures, regenerated from the same seed on the same
+        calibration, and the same five disasters; each extra rand is invested in the same mix of bonds and bills as today's assets.{" "}
         {hit && below
-          ? `The 95% target is crossed between ${randM(below.own_funds)} (${pct(below.share_covered, 1)}) and ${randM(hit.own_funds)} (${pct(hit.share_covered, 1)}), the industry-typical cover of about 1.8 times. I did not run points in between to narrow it.`
+          ? `The 95% target is crossed between ${randM(below.own_funds)} (${pct(below.share_covered, 1)}) and ${randM(hit.own_funds)} (${pct(hit.share_covered, 1)}), the industry-typical cover of about 1.8 times. I report it at that precision, as decided before the ${randM(below.own_funds)} result was seen, and ran no points to narrow it.`
           : `Even ${randM(L[L.length - 1].own_funds)} does not reach 95%.`}{" "}
-        Every point is a full run; the line between them is drawn, not modelled. All of it uses the v1 mortality model; it will be rerun once,
-        at R400m, R500m and R627m, when the mortality revision is final.
+        Every point is a full run; the line between them is drawn, not modelled. These results are final, on the v1 mortality model.
       </p>
+      {ref && (
+        <p className="note caveat">
+          The futures simulate interest rates and inflation; longevity enters only through the named shocks, and because v1's forecast ranges are lower bounds
+          (it failed its calibration test), the true longevity risk may be larger than those shocks. {randM(ref.own_funds)} clearing {cleared} of {names.length}{" "}
+          disasters should be read in that light.
+        </p>
+      )}
       <div className="table-wrap">
         <table>
           <thead>
