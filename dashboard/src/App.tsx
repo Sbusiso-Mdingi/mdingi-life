@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { api, type Research } from "./api";
-import { Built, Capital, Customers, Investments, Overview, Quote, type Tab } from "./pages";
+import { Built, Capital, Customers, Future, Investments, Overview, Quote, type Tab } from "./pages";
 import { REPO } from "./ui";
 
 const TABS: { id: Tab; label: string }[] = [
@@ -9,6 +9,7 @@ const TABS: { id: Tab; label: string }[] = [
   { id: "customers", label: "Our customers" },
   { id: "investments", label: "Investments" },
   { id: "capital", label: "Capital" },
+  { id: "future", label: "Next five years" },
   { id: "built", label: "How it's built" },
 ];
 const fromHash = (): Tab => {
@@ -72,6 +73,7 @@ export function App({ embedded }: { embedded: boolean }) {
             {tab === "customers" && <Customers r={research} />}
             {tab === "investments" && <Investments r={research} />}
             {tab === "capital" && <Capital r={research} />}
+            {tab === "future" && (research.v4 ? <Future r={research} /> : <div className="loading">The five-year projection has not been run yet.</div>)}
             {tab === "built" && <Built r={research} />}
           </>
         )}

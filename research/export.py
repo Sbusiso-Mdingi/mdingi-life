@@ -15,6 +15,9 @@ If balance_v3.json exists it bundles v3 the same way: the balance sheet, the SCR
 sensitivities, the checks, the funeral table, a summary of the invented book with its funeral premium rates, the key-rate
 DV01 of the annuities and of each portfolio and, if keyrate_v3.json exists, the key-rate matched result.
 
+If projection_v4.json exists it bundles v4: the scenario generator's parameters and 10-year rate fans, cover across the
+scenarios, the central path's balance sheets and IFRS 17 results, the named stresses, the sensitivities and the checks.
+
 Refuses to run until the protocol is frozen.
 """
 from __future__ import annotations
@@ -172,6 +175,44 @@ def v3() -> dict | None:
             "key_rate": key}
 
 
+def v4() -> dict | None:
+    f = OUT / "projection_v4.json"
+    if not f.exists():
+        return None
+    p = json.loads(f.read_text())
+    year = lambda y: {"cover": y["cover"], "own_funds": y["own_funds"], "scr": y["scr"], "assets": y["assets"]["total"],
+                      "bel": y["bel"], "risk_margin": y["risk_margin"], "policies": y["policies"],
+                      "inflation": y.get("inflation_realised")}
+    esg = p["esg"]
+    # One history point a year, at the September month-end, beside the year-end fans.
+    hist = {}
+    for k, h in esg["history"].items():
+        pts = [(int(d[:4]), v) for d, v in zip(h["dates"], h["rate"]) if d[5:7] == "09" and v == v]
+        hist[k] = {"years": [y for y, _ in pts], "rate": [v for _, v in pts]}
+    keep = ("factors", "tau", "months", "names", "mu", "phi", "capped", "sd", "corr", "beta0", "hist_sd_12m")
+    frozen3 = esg["frozen_three_factor"]
+    ifrs = {c: {k: v[k] for k in ("csm_transition", "csm", "equity", "profit", "service_result", "finance_result",
+                                  "roll")} for c, v in p["ifrs17"].items()}
+    stress_ifrs = {n: {k: v[k] for k in ("csm", "profit", "service_result", "csm_used", "losses", "loss_t0",
+                                         "fs_change_t0", "fs_change_t1", "experience_t1")} for n, v in p["stresses_ifrs17"].items()}
+    return {
+        "protocol": p["protocol"]["v4"], "valuation_date": p["valuation_date"],
+        "esg": {**{k: esg[k] for k in keep}, "ten_year": esg["ten_year"], "history": hist, "checks": esg["checks"],
+                "frozen_three_factor": {**{k: frozen3[k] for k in keep}, "checks": frozen3["checks"],
+                                        "cover": frozen3["cover"]},
+                "covid_excluded": {k: esg["covid_excluded"][k] for k in ("tau", "phi", "checks")}},
+        "central": [year(y) for y in p["central"]["years"]],
+        "scenarios": p["scenarios"],
+        "stresses": {n: {"cover": v["cover"], "own_funds": v["own_funds"], "scr": v["scr"],
+                         "capital_to_restore": v["capital_to_restore"], "worst_year": v["worst_year"], "A2": v["A2"]}
+                     | stress_ifrs[n] for n, v in p["stresses"].items()},
+        "pandemic_ratio": p["pandemic_ratio"],
+        "ifrs17": ifrs, "transition": p["transition"],
+        "sensitivities": p["sensitivities"],
+        "checks": p["checks"],
+    }
+
+
 def e65(log_m: np.ndarray, ages: np.ndarray) -> np.ndarray:
     """Period life expectancy at 65, constant force within each year of age, Kannisto above 89."""
     ages, full = kannisto.extend(log_m, ages)
@@ -234,6 +275,8 @@ def main() -> None:
         out["v2"] = b
     if (b := v3()) is not None:
         out["v3"] = b
+    if (b := v4()) is not None:
+        out["v4"] = b
     (data.ROOT / "data" / "research.json").write_text(json.dumps(out, default=float))
     print("wrote data/research.json")
 

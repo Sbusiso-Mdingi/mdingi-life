@@ -1,15 +1,15 @@
 import { useState, type ReactNode } from "react";
-import type { Book, Research, Sex, V3 } from "./api";
-import { BarChart, IntervalChart, type BarGroup, type Interval } from "./charts";
+import type { Book, Pct, Research, Sex, V3 } from "./api";
+import { BarChart, IntervalChart, YearChart, type BarGroup, type Interval } from "./charts";
 import { BalanceSheet, Backtest, CurveBacktest, CurvePanel, CurvePrices, FanPanel, History, Interest, Matching, Sensitivity, Sources } from "./detail";
 import { SEX_LABEL, num, pct, thousands } from "./format";
-import { AGES, COLOR, KEYS, REPO, SEXES, Segmented, TableView, Verdict, f2, longDate, v2find } from "./ui";
+import { AGES, COLOR, KEYS, Legend, REPO, SEXES, Segmented, TableView, Verdict, f2, longDate, v2find } from "./ui";
 
-export type Tab = "overview" | "quote" | "customers" | "investments" | "capital" | "built";
+export type Tab = "overview" | "quote" | "customers" | "investments" | "capital" | "future" | "built";
 type Go = (t: Tab) => void;
 
 const randFull = (v: number) => `R${thousands(v)}`;
-const randM = (v: number, digits = 0) => `R${(v / 1e6).toLocaleString("en-US", { minimumFractionDigits: digits, maximumFractionDigits: digits })}m`;
+const randM = (v: number, digits = 0) => `${v < 0 ? "−" : ""}R${(Math.abs(v) / 1e6).toLocaleString("en-US", { minimumFractionDigits: digits, maximumFractionDigits: digits })}m`;
 const randBn = (v: number) => `R${(v / 1e9).toFixed(1)}bn`;
 const cents = (v: number) => `R${v.toFixed(2)}`;
 const coverPct = (c: number) => `${Math.round(c * 100)}%`;
@@ -762,6 +762,32 @@ export function Built({ r }: { r: Research }) {
         verdicts: <Verdict pass={v3.key_rate.checks.K6.pass} />,
       });
   }
+  const v4 = r.v4;
+  if (v4) {
+    const a2 = Object.values(v4.checks.A2);
+    checks.push(
+      {
+        claim: "The projection adds up",
+        plain: "Each year's cash flows and the roll-forward of the accounts reconcile with the valuations at either end, to rounding.",
+        verdicts: <Verdict pass={v4.checks.R1.pass && v4.checks.R2.pass} />,
+      },
+      {
+        claim: "Simulated rates move like real ones",
+        plain: "A year's change in the 10-year yield across the futures is within a third of its spread since 2011. The model as first written failed this for inflation-linked bonds, and was changed before the projection was run.",
+        verdicts: (["real", "nominal"] as const).map((k) => <Verdict key={k} pass={v4.checks.E1[k].pass} who={k === "real" ? "Inflation-linked" : "Fixed-rate"} />),
+      },
+      {
+        claim: "Cover stays above 100% in 95% of futures",
+        plain: `It does in ${pct(v4.checks.A1.share_covered, 0)}. The bonds match the pensions, not the regulator's extra amounts.`,
+        verdicts: <Verdict pass={v4.checks.A1.pass} />,
+      },
+      {
+        claim: "Cover stays above 100% under each disaster",
+        plain: `${a2.filter(Boolean).length} of ${a2.length} pass. See the next five years.`,
+        verdicts: <Verdict pass={a2.every(Boolean)} />,
+      },
+    );
+  }
   return (
     <>
       <PageHead kicker="How it's built" title="The work behind the numbers">
@@ -769,7 +795,7 @@ export function Built({ r }: { r: Research }) {
         result was seen. The results are reported as they came out, failures included.
       </PageHead>
 
-      <div className="grid three">
+      <div className="grid two">
         <div className="card">
           <div className="icon-badge" aria-hidden="true">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -822,6 +848,24 @@ export function Built({ r }: { r: Research }) {
             </a>{" "}
             ·{" "}
             <a href={doc("RESULTS_v3.md")} target="_blank" rel="noreferrer">
+              Results
+            </a>
+          </p>
+        </div>
+        <div className="card">
+          <div className="icon-badge" aria-hidden="true">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M3 12h4l3-8 4 16 3-8h4" />
+            </svg>
+          </div>
+          <h3>Looking five years ahead</h3>
+          <p>A thousand simulated paths for interest rates and inflation, five named disasters, and the accounts under IFRS 17, year by year.</p>
+          <p>
+            <a href={doc("PROTOCOL_v4.md")} target="_blank" rel="noreferrer">
+              Plan
+            </a>{" "}
+            ·{" "}
+            <a href={doc("RESULTS_v4.md")} target="_blank" rel="noreferrer">
               Results
             </a>
           </p>
@@ -906,3 +950,265 @@ export function Built({ r }: { r: Research }) {
   );
 }
 
+
+// The next five years -----------------------------------------------------------------------------------------------
+
+const STRESS: Record<string, { name: string; note: string }> = {
+  "S1 Rates fall": { name: "Interest rates fall", note: "Both curves 1.5 points lower, then drifting back" },
+  "S2 Longevity": { name: "Pensioners live longer", note: "Their death rates 20% lower, for good" },
+  "S3 Pandemic year": { name: "A pandemic year", note: "Deaths as in 2021 against 2019, for one year" },
+  "S4 Lapse wave": { name: "Customers leave", note: "30% of funeral policies cancelled at once" },
+  "S5 All at once": { name: "All three at once", note: "Rates fall, a pandemic year and customers leave" },
+};
+
+export function Future({ r }: { r: Research }) {
+  const v = r.v4!;
+  const [rate, setRate] = useState<"nominal" | "real">("nominal");
+  const y0 = Number(v.valuation_date.slice(0, 4));
+  const years = v.central.map((_, t) => y0 + t);
+  const s = v.scenarios;
+  const c = s.cover;
+  const ifrs = v.ifrs17["0.1"];
+  const fanBands = (p: Pct, color: string, what: string) => [
+    { key: "90", label: `9 in 10 ${what}`, color, xs: years, lo: p["5"], hi: p["95"] },
+    { key: "50", label: `Half of ${what}`, color, xs: years, lo: p["25"], hi: p["75"] },
+  ];
+  const ten = v.esg.ten_year[rate];
+  const hist = v.esg.history[rate];
+  const stress: Bar[] = Object.entries(v.stresses).map(([k, x]) => {
+    const worst = Math.min(...x.cover);
+    return { key: k, name: STRESS[k]?.name ?? k, note: STRESS[k]?.note, value: Math.max(worst, 0), label: coverPct(worst), color: worst >= 1 ? "var(--s1)" : "var(--s3)" };
+  });
+  const failed = Object.entries(v.stresses).filter(([, x]) => !x.A2);
+  const below = s.below_one_share;
+  const m = (x: number[]) => x.map((y) => y / 1e6);
+  return (
+    <>
+      <PageHead kicker="The next five years" title="What could happen to us">
+        A once-a-year look ahead, as the regulator asks of every insurer: a thousand possible paths for interest rates and inflation over five years, and five
+        named disasters, each run through our customers, our bonds and our capital, year by year.
+      </PageHead>
+
+      <div className="grid three">
+        <Stat label="Solvency cover in five years" value={coverPct(c["50"][5])} sub={`In the middle future, from ${coverPct(c["50"][0])} today`} good={c["50"][5] >= 1} />
+        <Stat label="Futures that stay above 100%" value={pct(s.A1.share_covered, 0)} sub="Every year for five years. Our target is 95%">
+          {s.A1.pass ? <Pill kind="good">Meets our target</Pill> : <Pill kind="bad">Misses our target</Pill>}
+        </Stat>
+        <Stat label="Disasters we survive" value={`${5 - failed.length} of 5`} sub="Above 100% every year, without raising capital">
+          {failed.length ? <Pill kind="bad">{failed.length} would need more capital</Pill> : <Pill kind="good">All of them</Pill>}
+        </Stat>
+      </div>
+
+      <section className="panel">
+        <div className="panel-head">
+          <div>
+            <h2 className="serif">Our solvency cover across a thousand futures</h2>
+            <p className="eyebrow">Capital held over capital required, at the end of each year from {longDate(v.valuation_date)}</p>
+          </div>
+        </div>
+        <Legend
+          items={[
+            { label: "Middle future", color: "var(--s1)" },
+            { label: "Rates as expected", color: "var(--s2)", kind: "dash" },
+            { label: "Half of futures", color: "var(--s1)", kind: "band" },
+            { label: "9 in 10 futures", color: "var(--s1)", kind: "band" },
+            { label: "Regulator's minimum", color: "var(--muted-foreground)", kind: "dash" },
+          ]}
+        />
+        <YearChart
+          label="Solvency cover at each year-end over five years: the middle of 1,000 scenarios, the central path, and the ranges holding half and 9 in 10 of them"
+          series={[
+            { key: "min", label: "Regulator's minimum", color: "var(--muted-foreground)", xs: years, ys: years.map(() => 1), dash: true },
+            { key: "central", label: "Rates as expected", color: "var(--s2)", xs: years, ys: v.central.map((y) => y.cover), dash: true },
+            { key: "median", label: "Middle future", color: "var(--s1)", xs: years, ys: c["50"] },
+          ]}
+          bands={fanBands(c, "var(--s1)", "futures")}
+          fmt={coverPct}
+          height={300}
+        />
+        <p className="note">
+          If interest rates follow their expected path, our cover climbs from {coverPct(v.central[0].cover)} to {coverPct(v.central[5].cover)}: the business earns
+          more than the capital it ties up. But rates rarely do what is expected. In {pct(below, 0)} of the futures our cover dips below 100% at least once, against
+          a target of no more than 5%. The bonds match what we owe our pensioners, but not the extra amounts the regulator adds on top, so a fall in rates still
+          hurts.
+        </p>
+        <TableView>
+          <table>
+            <thead>
+              <tr>
+                <th>Year-end</th>
+                <th className="num">Rates as expected</th>
+                <th className="num">5th percentile</th>
+                <th className="num">Middle</th>
+                <th className="num">95th percentile</th>
+                <th className="num">Futures below 100%</th>
+              </tr>
+            </thead>
+            <tbody>
+              {years.map((y, t) => (
+                <tr key={y}>
+                  <td>{t === 0 ? `Today (${y})` : y}</td>
+                  <td className="num">{coverPct(v.central[t].cover)}</td>
+                  <td className="num">{coverPct(c["5"][t])}</td>
+                  <td className="num">{coverPct(c["50"][t])}</td>
+                  <td className="num">{coverPct(c["95"][t])}</td>
+                  <td className="num">{pct(s.below_one_by_year[t], 0)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </TableView>
+      </section>
+
+      <section className="panel">
+        <div className="panel-head">
+          <div>
+            <h2 className="serif">Where interest rates could go</h2>
+            <p className="eyebrow">The 10-year {rate === "nominal" ? "fixed-rate" : "inflation-linked"} government bond yield, each September and in our futures</p>
+          </div>
+          <Segmented
+            label="Curve"
+            value={rate}
+            onChange={setRate}
+            options={[
+              { id: "nominal", label: "Fixed-rate" },
+              { id: "real", label: "Inflation-linked" },
+            ]}
+          />
+        </div>
+        <Legend
+          items={[
+            { label: "What happened", color: "var(--s2)" },
+            { label: "Middle future", color: "var(--s1)" },
+            { label: "Half of futures", color: "var(--s1)", kind: "band" },
+            { label: "9 in 10 futures", color: "var(--s1)", kind: "band" },
+          ]}
+        />
+        <YearChart
+          label={`The 10-year ${rate} zero rate each September since ${hist.years[0]}, and its spread over 1,000 scenarios for the next five years`}
+          series={[
+            { key: "hist", label: "What happened", color: "var(--s2)", xs: hist.years, ys: hist.rate },
+            { key: "median", label: "Middle future", color: "var(--s1)", xs: years, ys: ten["50"] },
+          ]}
+          bands={fanBands(ten, "var(--s1)", "futures")}
+          fmt={(x) => pct(x, 1)}
+          height={280}
+        />
+        <p className="note">
+          The futures come from a model of how the whole curve moved month by month since 2011, each curve reduced to a level and a slope. In a year, its rates
+          move about as much as they did in the past: {num(v.checks.E1[rate].ratio, 2)} times the historical spread, inside the 0.75 to 1.33 we set beforehand.
+          Its worst 1-in-200 fall over a year, {num(-v.esg.checks.E2[rate].scenario_q005 * 100, 1)} points, is close to the regulator's own rate shock at 10 years,{" "}
+          {num(-v.esg.checks.E2[rate].sam_down_10y * 100, 1)} points.
+        </p>
+      </section>
+
+      <section className="panel">
+        <div className="panel-head">
+          <div>
+            <h2 className="serif">Five disasters</h2>
+            <p className="eyebrow">Lowest solvency cover over the five years under each</p>
+          </div>
+        </div>
+        <HBars rows={stress} max={Math.max(1.5, ...stress.map((x) => x.value))} marker={1} markerLabel="The line marks 100%, the regulator's minimum." />
+        <p className="note">
+          A pandemic year or a wave of cancellations we can absorb. A fall in interest rates takes us below 100% at once, and we recover within{" "}
+          {Math.max(...failed.filter(([k]) => k !== "S2 Longevity").map(([, x]) => x.cover.findIndex((y) => y >= 1)), 0)} years as rates drift back. Pensioners living
+          longer is the one we could not ride out: our pensions would cost {randM(v.stresses["S2 Longevity"].losses + v.stresses["S2 Longevity"].csm_used)} more,
+          and we would need {randM(v.stresses["S2 Longevity"].capital_to_restore)} of new capital to get back to 100%.
+        </p>
+        <div className="callout">
+          <strong>What we would do next</strong>
+          Longevity is the risk that sinks us, as the capital tests showed. Reinsuring part of it, and matching the regulator's extra amounts as well as the
+          pensions, are the two steps this points to. Neither is modelled yet.
+        </div>
+        <TableView>
+          <table>
+            <thead>
+              <tr>
+                <th>Disaster</th>
+                {years.map((y) => (
+                  <th key={y} className="num">
+                    {y}
+                  </th>
+                ))}
+                <th className="num">New capital needed</th>
+              </tr>
+            </thead>
+            <tbody>
+              {Object.entries(v.stresses).map(([k, x]) => (
+                <tr key={k}>
+                  <td>
+                    {STRESS[k]?.name ?? k}
+                    <div className="plain">{STRESS[k]?.note}</div>
+                  </td>
+                  {x.cover.map((y, t) => (
+                    <td key={t} className="num">
+                      {coverPct(y)}
+                    </td>
+                  ))}
+                  <td className="num">{randM(x.capital_to_restore)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </TableView>
+      </section>
+
+      <section className="panel">
+        <div className="panel-head">
+          <div>
+            <h2 className="serif">The profit we would report</h2>
+            <p className="eyebrow">IFRS 17 profit each year if rates move as expected, R million</p>
+          </div>
+        </div>
+        <Legend
+          items={[
+            { label: "Profit", color: "var(--s1)" },
+            { label: "From insurance", color: "var(--s2)" },
+            { label: "From investments", color: "var(--s3)" },
+          ]}
+        />
+        <YearChart
+          label="IFRS 17 profit each year on the central path, split into the insurance service result and the net finance result, R million"
+          series={[
+            { key: "p", label: "Profit", color: "var(--s1)", xs: years.slice(1), ys: m(ifrs.profit) },
+            { key: "s", label: "From insurance", color: "var(--s2)", xs: years.slice(1), ys: m(ifrs.service_result) },
+            { key: "f", label: "From investments", color: "var(--s3)", xs: years.slice(1), ys: m(ifrs.finance_result) },
+          ]}
+          fmt={(x) => `R${num(x, 0)}m`}
+          height={260}
+        />
+        <p className="note">
+          Accounts and solvency measure the same business differently. Under IFRS 17 the profit we expect from our policies is held back in a reserve, the
+          contractual service margin, and released as we provide cover: {randM(ifrs.csm[0])} today. Most of the profit is investment return, on our own capital as
+          well as on the bonds behind the pensions. Across the thousand futures, profit in the first year ranges
+          from {randM(s.profit["5"][0])} to {randM(s.profit["95"][0])}, nine times in ten.
+        </p>
+        <TableView>
+          <table>
+            <thead>
+              <tr>
+                <th>Year</th>
+                <th className="num">Profit</th>
+                <th className="num">From insurance</th>
+                <th className="num">From investments</th>
+                <th className="num">Reserve for future profit, year-end</th>
+              </tr>
+            </thead>
+            <tbody>
+              {years.slice(1).map((y, t) => (
+                <tr key={y}>
+                  <td>{y}</td>
+                  <td className="num">{randM(ifrs.profit[t], 1)}</td>
+                  <td className="num">{randM(ifrs.service_result[t], 1)}</td>
+                  <td className="num">{randM(ifrs.finance_result[t], 1)}</td>
+                  <td className="num">{randM(ifrs.csm[t + 1], 1)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </TableView>
+      </section>
+    </>
+  );
+}

@@ -109,6 +109,70 @@ export type V3 = {
   };
 };
 
+export type Pct = Record<"5" | "25" | "50" | "75" | "95", number[]>;
+export type Spread = {
+  cover: Pct;
+  below_one_share: number;
+  below_one_by_year: number[];
+  worst: number;
+  A1: { share_covered: number; pass: boolean };
+};
+type Esg = {
+  factors: number;
+  tau: Record<"nominal" | "real", number>;
+  phi: number[];
+  checks: {
+    E1: Record<"nominal" | "real", { scenario_sd: number; history_sd: number; ratio: number; pass: boolean }>;
+    E2: Record<"nominal" | "real", { scenario_q005: number; sam_down_10y: number; spot_10y: number }>;
+  };
+};
+export type Stress = {
+  cover: number[];
+  own_funds: number[];
+  scr: number[];
+  capital_to_restore: number;
+  worst_year: number;
+  A2: boolean;
+  csm: number[];
+  profit: number[];
+  service_result: number[];
+  csm_used: number;
+  losses: number;
+};
+export type Ifrs = {
+  csm_transition: Record<"annuities" | "funeral", number>;
+  csm: number[];
+  equity: number[];
+  profit: number[];
+  service_result: number[];
+  finance_result: number[];
+};
+
+export type V4 = {
+  protocol: string;
+  valuation_date: string;
+  esg: Esg & {
+    ten_year: Record<"nominal" | "real", Pct & { central: number[] }>;
+    history: Record<"nominal" | "real", { years: number[]; rate: number[] }>;
+    frozen_three_factor: Esg & { cover: Spread };
+    covid_excluded: Esg;
+  };
+  central: { cover: number; own_funds: number; scr: number; assets: number; risk_margin: number; bel: Record<"annuities" | "funeral" | "total", number> }[];
+  scenarios: Spread & { profit: Pct; own_funds: Pct };
+  stresses: Record<string, Stress>;
+  pandemic_ratio: Record<Sex, number>;
+  ifrs17: Record<string, Ifrs>;
+  transition: { ra: Record<"annuities" | "funeral", number>; confidence: number; csm: Record<"annuities" | "funeral", number> };
+  sensitivities: { covid_excluded: Spread; no_rematch: Spread; no_rematch_central: { cover: number[] } };
+  checks: {
+    R1: { worst: number; pass: boolean };
+    R2: { worst_relative: number; pass: boolean };
+    E1: Esg["checks"]["E1"];
+    A1: { share_covered: number; pass: boolean };
+    A2: Record<string, boolean>;
+  };
+};
+
 export type Research = {
   source: string;
   protocol: string;
@@ -123,6 +187,7 @@ export type Research = {
   compare?: { runs: Run[]; completeness: BySex; exposure: BySex };
   v2?: V2;
   v3?: V3;
+  v4?: V4 | null;
 };
 
 export type Quote = Price & { sex: Sex; model: string; jump_off: number; lower_bound: boolean };
