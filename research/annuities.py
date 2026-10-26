@@ -22,7 +22,8 @@ RATES, ADJ = (0.02, 0.04, 0.06), (0.6, 0.7, 0.8)
 REFITS, PATHS = 500, 5000
 
 
-def price(r: data.Rates, model: str, window: str, rng) -> dict:
+def factors(r: data.Rates, model: str, window: str, rng) -> tuple[int, dict]:
+    """Jump-off and, for every (age, rate, factor), the annuity factor on each of the production paths."""
     name = model.split()[0]
     years = [y for y in r.years if y >= WINDOWS[window] and y not in COVID]
     r = r.sub(AGES, years)
@@ -31,16 +32,27 @@ def price(r: data.Rates, model: str, window: str, rng) -> dict:
     h = start + kannisto.TOP - min(ENTRY_AGES) + 1
     sims = bootstrap.simulate(MODELS[name], r, h, REFITS, PATHS, rng)
     ages, full = kannisto.extend(sims, r.ages)
-    out = {"jump_off": jump, "prices": []}
+    out = {}
     for x in ENTRY_AGES:
         m = annuity.cohort(full, ages, x, start)
         for i in RATES:
             for adj in ADJ:
-                a = annuity.factor(m, i, adj)
-                lo, med, hi = np.quantile(a, [0.025, 0.5, 0.975])
-                out["prices"].append({"age": x, "rate": i, "adj": adj, "median": med, "lo": lo, "hi": hi,
-                                      "width_pct": 100 * (hi - lo) / med})
-    return out
+                out[x, i, adj] = annuity.factor(m, i, adj)
+    return jump, out
+
+
+def summary(a: dict) -> list[dict]:
+    prices = []
+    for (x, i, adj), v in a.items():
+        lo, med, hi = np.quantile(v, [0.025, 0.5, 0.975])
+        prices.append({"age": x, "rate": i, "adj": adj, "median": med, "lo": lo, "hi": hi,
+                       "width_pct": 100 * (hi - lo) / med})
+    return prices
+
+
+def price(r: data.Rates, model: str, window: str, rng) -> dict:
+    jump, a = factors(r, model, window, rng)
+    return {"jump_off": jump, "prices": summary(a)}
 
 
 def main() -> None:
