@@ -64,4 +64,15 @@ From the production fit, for a single life aged 55, 65 and 75 in 2026, by sex. T
 
 ## Changes after freezing
 
-None yet.
+### 26 October 2026: Stats SA deaths from DataFirst, WPP exposure
+
+Written before any model was fitted on Stats SA data. Done beforehand, and disclosed here: the DataFirst unit records were tallied by year of death, sex and single age (`research/mcd.py`), and registered deaths at ages 50 to 89 were divided by WPP deaths at the same ages, by year and sex, as a completeness check. No rates were computed and no model was fitted.
+
+- **Deaths.** Stats SA *Mortality and Causes of Death* unit records from DataFirst (UCT): catalogue 830, 1997 to 2020, version 1.1, and catalogue 1074, version 1.1. Stillbirths are dropped and deaths are counted by year of death. These are the records P0309.3 is built from. The 1074 file holds the records processed in 2021, 2022 and 2024, so it covers deaths in 2021, 2022 and 2024 but only late registrations for 2023. 2023 is not used.
+- **Exposure.** UN WPP 2024 1 July population by single age and sex. Stats SA mid-year estimates by single age could not be obtained: SuperWEB and Nesstar were down, and the P0302 projection workbook gives five-year groups ending at 80+. That workbook (2002 to 2025) is used only as a cross-check of the WPP exposure, aggregated to the same groups. Death rates therefore pair registered deaths with a modelled population, and are labelled that way.
+- **Years.** The WPP population ends in 2023, so 2024 has no exposure and is not used. The production fit is 1997 to 2019, jump-off 2019. Design and validation periods are unchanged.
+- **Completeness.** Registered deaths at ages 50 to 89 are not a constant share of WPP's estimate. For men, the share rises from 83% in 1997 to about 99% from 2003 to 2010, then falls to 90% by 2019. For women, it goes from 76% to about 93%, then 89%. A falling share makes registered mortality look as if it is improving faster than it is. WPP is itself a model, so part of the drift may be WPP's.
+- **Primary run.** Registered deaths are used unadjusted, as already registered. Windows, chosen models and tests P1 to P4 are decided on this run alone, and it is reported next to the WPP run, never mixed with it.
+- **One sensitivity.** Deaths at every age are divided by that year's completeness at ages 50 to 89, by sex. This lifts each year's total at 50 to 89 to WPP's level while keeping the registered age pattern. It reuses the primary run's windows and models and reports annuity prices only. It measures how much of the price comes from the registration drift and changes nothing else.
+
+Reason: the protocol's primary source could not be fetched as written. This keeps Stats SA's registered deaths, which were the point of the primary series, and takes the only single-age exposure available.
