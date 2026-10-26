@@ -82,4 +82,14 @@ The appetite (A1, A2) is the board's, set here before the run. Every result is r
 
 ## Changes after freezing
 
-None yet.
+### 26 October 2026: two factors a curve, not three
+
+Written after the scenario generator was calibrated as frozen and before anything was projected. What was seen:
+
+- **As frozen.** τ came out at 1.5 years for nominal and 3.5 for real. The nominal slope and curvature factors swing between −12 and +12 from month to month, with a correlation of −0.99 between them, and their AR(1) coefficients are about 0.37 a month. The fitted 10-year nominal zero rate ranges from 3.0% to 23.4% over the sample. In February 2026, for example, it is 23.3% while the eight bonds in the window yield 7.6% to 9.3%. The standard deviation of 12-month changes in the 10-year zero rate is 2.8 points for nominal (0.7 for real). On 1,000 paths at the frozen seed, E1's ratio is 0.96 for nominal and 1.62 for real.
+- **Why.** Every window holds only bonds of about 7 to 30 years, so nothing pins down the short end. With fixed τ, the slope and curvature loadings are then almost collinear over the maturities that are observed. The fit uses that freedom to chase the scatter in auction yields, and the curve swings wildly where no bond sits. The factor series are mostly fitting noise. The history they produce, and E1 calibrated against it, are not the history of SA rates.
+- **Looked at before writing this,** to check the change fixes the problem: the same fits with two factors. τ is then 4.5 years for nominal and 0.5 for real (the end of the grid). The fitted 10-year rate stays between 7.2% and 12.5% for nominal and 0.9% and 5.4% for real, never more than 1.1 points from the window's median yield. The AR(1) coefficients are 0.86 and 0.74 for nominal and 0.97 and 0.86 for real, and 12-month changes in the 10-year rate have a standard deviation of 0.9 points nominal and 0.6 real. Nothing was simulated or projected with two factors.
+
+The change: each kind's curve has two factors, level and slope (β2 = 0), so four factors in all, four AR(1)s and a 4 × 4 covariance. Everything else stays as frozen: the windows, the τ grid and how τ is chosen, the AR(1) estimation and cap, the jump-off, the seed, the scenarios and inflation, the projection, IFRS 17, the stresses (S1 still moves β0 of each kind by −0.015), the sensitivities, and the checks with their thresholds.
+
+Also reported, so the frozen method is not lost: the three-factor calibration, its E1 and E2, and cover across its 1,000 scenarios, beside the main results.
