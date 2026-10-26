@@ -2,7 +2,7 @@
 
 Written on 26 October 2026, after v1.2 was run and reported (`RESULTS_v1.2.md`), and before any v1.3 code was written or run. A revision made in response to v1.2's results. v1, v1.1 and v1.2 stay as reported. **This is the last mortality iteration.** Whatever it shows is published, and the mortality model is then final.
 
-Amended on 26 October 2026, after review and before any v1.3 code was written: the heaping check ("Seen beforehand"), the smoother's ends and convergence checks, the simulated recovery test, and an upper bound on Q2.
+Amended on 26 October 2026, after review and before any v1.3 code was written: the heaping check ("Seen beforehand"), the smoother's ends and convergence checks, the simulated recovery test, and an upper bound on Q2. Amended again the same day, after review and still before any code: a plausibility gate.
 
 Frozen at commit: (not yet frozen)
 
@@ -85,12 +85,25 @@ If v1.3 fails for women, the planned alternative is **CBD post-peak on its own**
 
 **What the upper bound means for it, known now.** CBD has no cohort term, so v1.3 does not change it, and its origin A result is already v1.2's: 100% coverage for women (120 of 120 cells, φ near 70). Under the 90% to 98% bound it **fails Q2 at origin A before the run**. So the fallback cannot price women, and the women's chain below in effect reads: v1.3, else v1 with lower bounds. The fallback is still scored at both origins and reported. It is kept in the plan rather than swapped for another model, because choosing a new fallback now, with its origin A scores in view, would be choosing on the hold-out. The same holds for men's CBD (98.3%, 118 cells), which is not in the men's chain.
 
+## A plausibility gate
+
+*Added 26 October 2026, after review and before any v1.3 code.* It is motivated by v1.2's known failure, in which women's price at 65 (13.18) came out below men's (13.24) though women outlive men at 65 by close to three years, and women's e65 fell from 2020 to 2030. It is not motivated by any v1.3 result; none exists.
+
+A version may price a sex only if, from that same version's production run:
+
+1. **women's price at 65 exceeds men's** (median, 4%, annuitant factor 0.7); and
+2. **e65 rises from 2020 to 2030 for both sexes**, by at least 0.25 years in the forecast median. A smaller rise counts as flat. A quarter of a year a decade is well under the rise South Africa saw after 2006, so it rules out only a forecast with almost no improvement. This plan gives no reason to expect flat or falling e65 for either sex over 2020 to 2030, so the exception does not apply.
+
+The gate is applied in addition to Q1 to Q3 at both origins. It applies to the whole version: if v1.3 passes the tests for men but its women's price is below its men's, v1.3 prices neither sex.
+
+**What the gate means for the chain, known now.** v1.2 fails both parts (13.18 against 13.24; women's e65 16.88 in 2020 and 16.73 in 2030). So v1.2 cannot price men even if it passes at origin B, and the men's chain below in effect reads: v1.3, else v1 with lower bounds. v1.2 is still scored at origin B and reported. v1 passes the gate (16.05 against 13.53; e65 from 15.31 to 16.11 for men and 18.29 to 19.69 for women). For the CBD fallback the gate would compare women's CBD with men's CBD from the same run; it is reported, though the fallback already fails Q2.
+
 ## Which version prices each sex
 
-Decided now, applied after the run with no other choice:
+Decided now, applied after the run with no other choice. "Passes" means Q1 to Q3 at both origins and the plausibility gate:
 
-- **Men:** v1.3 if it passes. Otherwise v1.2, if v1.2 passes at both origins. Otherwise v1, with men's ranges marked as lower bounds.
-- **Women:** v1.3 if it passes. Otherwise the CBD fallback, if it passes. Otherwise v1, with women's ranges marked as lower bounds, the failure published, and no further iteration.
+- **Men:** v1.3 if it passes. Otherwise v1.2, if v1.2 passes at both origins. Otherwise v1, with men's ranges marked as lower bounds. In practice, since v1.2 fails the gate: v1.3, otherwise v1 with ranges marked as lower bounds.
+- **Women:** v1.3 if it passes. Otherwise the CBD fallback, if it passes. Otherwise v1, with women's ranges marked as lower bounds, the failure published, and no further iteration. In practice, since CBD already fails Q2 at origin A (120 of 120 cells): v1.3, otherwise v1 with ranges marked as lower bounds.
 
 Until this run is reported, the site keeps v1's prices for both sexes. v1.1's and v1.2's prices are not put on the site. Where a sex is priced on v1, the site says so. Where the two sexes are priced on different versions, the site says that too.
 
@@ -99,8 +112,10 @@ Until this run is reported, the site keeps v1's prices for both sexes. v1.1's an
 As v1.1 and v1.2, at both origins, with v1.2 alongside: the tests, every model's scores, γ before and after smoothing (by birth year), the AR coefficient of γ, the e65 forecasts in 2020, 2030 and 2050, and prices at 55, 65 and 75. Also: the move in e65 from 2019 (fitted) to 2020 with the period index held, split by age, as in the diagnosis above. Seed 20261030. Script `research/v13.py`, output `research/results/v13.json`, on the Mac. Unit tests come before the freeze:
 
 - the smoother on its own: a lone spike is cut to a fifth in the interior; the end rows match the table above; non-estimated cohorts are untouched; γ sums to zero;
-- **recovery of a known cohort effect on simulated data**: deaths drawn as Poisson from an RH model with v1.2's men's a, b and k, the 2006 to 2019 window and WPP-sized exposures, and a known smooth γ (a linear trend plus a bump 10 years wide, of size 0.15). The smoothed fit converges, and its γ matches the five-year mean of the true γ to within 0.03 at every interior cohort. Then a heaped version (deaths at birth years ending in 0 scaled up by 15%): the smoothed fit's spikes at those years are under a third of the unsmoothed fit's;
+- **recovery of a known cohort effect on simulated data**: deaths drawn as Poisson from an RH model with a, b and k of the model tests' shape, exposures falling from 300,000 at 50 to 5,000 at 89 (WPP-sized for South African men), and a known smooth γ (a linear trend plus a bump 10 years wide, of size 0.15), on both windows (2006 to 2019, as men's, and 1997 to 2019, as women's). The smoothed fit converges, and its γ matches the five-year mean of the true γ to within 0.03 at every interior cohort, after a straight line in birth year is removed from both: a linear trend in γ is not identified separately from age and period in RH, so no fit can recover it. Then a heaped version (deaths at birth years ending in 0 scaled up by 15%): the smoothed fit's spikes at those years are under a third of the unsmoothed fit's;
 - convergence from the two starts agrees, as above.
+
+**Pre-freeze test result, 26 October 2026.** Two changes to the recovery test were made when it was first run, before the freeze: the linear trend is removed before comparing (on the first run the smoothed fit missed by 0.12, almost all of it the unidentified trend), and v1.2's men's a, b and k were replaced by the model tests' shape so the test runs without the Stats SA data. After that, every test passes except one. **On the 14-year post-peak window the smoothed fit does not recover the cohort bump**: it recovers 0.062 of the target 0.104, and misses by 0.045 against the 0.03 allowed. The unsmoothed fit misses by 0.028 on the same data. On the 23-year full window the smoothed fit passes (0.020 to 0.024). So, on a short window, smoothing inside the iteration lets the age and period terms take up part of a real cohort effect, beyond what the five-year average itself removes. The failing case is kept in the test file as an expected failure. Convergence, the two starts, the deviance check and the damping of heaped spikes all pass on both windows.
 
 ## After mortality is final
 

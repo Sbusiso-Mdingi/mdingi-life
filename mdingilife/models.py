@@ -135,6 +135,17 @@ class CBD:
         return self._log_m(np.swapaxes(K, 1, 2))
 
 
+def smooth(g: np.ndarray, ok: np.ndarray, span: int) -> np.ndarray:
+    """v1.3: each estimated cohort's g replaced by the equal-weight mean over the estimated cohorts within span // 2
+    birth years, the window cut at the ends, not padded. Cohorts not estimated stay at 0 and never enter a mean."""
+    h, est = span // 2, np.flatnonzero(ok)
+    out = np.zeros_like(g)
+    for j in est:
+        near = est[np.abs(est - j) <= h]
+        out[j] = g[near].mean()
+    return out
+
+
 class RenshawHaberman:
     """log m(x,t) = a(x) + b(x) k(t) + g(t - x), the age-period-cohort form with a unit cohort loading
     (Haberman and Renshaw, 2011), because the full model with an age-varying cohort loading often fails to converge.
@@ -144,8 +155,9 @@ class RenshawHaberman:
     """
 
     name = "RH"
+    SPAN: int | None = None  # v1.3: smooth g over birth years inside the fit (SmoothRH)
 
-    def fit(self, r: Rates) -> "RenshawHaberman":
+    def fit(self, r: Rates, g0: np.ndarray | None = None) -> "RenshawHaberman":
         self.r = r
         D, E = r.D, r.E
         coh = r.years[None, :] - r.ages[:, None]
@@ -155,8 +167,14 @@ class RenshawHaberman:
         ok = cells >= MIN_COHORT_CELLS
         lc = LeeCarter().fit(r)
         a, b, k, g = lc.a.copy(), lc.b.copy(), lc.k.copy(), np.zeros(len(cells))
-        prev = a[:, None] + np.outer(b, k)
-        for _ in range(MAX_ITER):
+        if g0 is not None:
+            g = np.where(ok, g0, 0.0)
+            if self.SPAN:
+                g = smooth(g, ok, self.SPAN)
+            a, g = a + g[ok].mean(), np.where(ok, g - g[ok].mean(), 0.0)
+        prev = a[:, None] + np.outer(b, k) + g[idx]
+        self.converged = False
+        for self.iters in range(1, MAX_ITER + 1):
             eta = lambda: a[:, None] + np.outer(b, k) + g[idx]
             Dh = E * np.exp(eta())
             a += (D - Dh).sum(1) / Dh.sum(1)
@@ -170,7 +188,12 @@ class RenshawHaberman:
             den = np.bincount(idx.ravel(), Dh.ravel(), len(cells))
             g = np.where(ok, g + num / den, 0.0)
             a, g = a + g[ok].mean(), np.where(ok, g - g[ok].mean(), 0.0)
-            if np.abs(eta() - prev).max() < TOL:
+            if self.SPAN:
+                g = smooth(g, ok, self.SPAN)
+                a, g = a + g[ok].mean(), np.where(ok, g - g[ok].mean(), 0.0)
+            self.change = float(np.abs(eta() - prev).max())
+            if self.change < TOL:
+                self.converged = True
                 break
             prev = eta()
         else:
@@ -204,6 +227,12 @@ class RenshawHaberman:
                 dg[:, j] = prev
             g = np.concatenate([g, g[:, -1:] + np.cumsum(dg, axis=1)], axis=1)
         return self.a[None, :, None] + self.b[None, :, None] * k[:, None, :] + g[:, idx]
+
+
+class SmoothRH(RenshawHaberman):
+    """v1.3 (research/PROTOCOL_v1.3.md): RH with g smoothed over birth years, span 5, inside every iteration."""
+
+    SPAN = 5
 
 
 MODELS = {m.name: m for m in (B0, LeeCarter, CBD, RenshawHaberman)}

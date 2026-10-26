@@ -1216,7 +1216,9 @@ export function Built({ r }: { r: Research }) {
               Deaths of people born in a year ending in 0 run about 10% (men) and 14% (women) above the neighbouring years, and 15% and 22% for 1930. Years ending in 5 are not
               heaped, and neither are ages. In 2021 to 2023, where the date of birth is recorded, 1.9% of the dates are 1 January, seven times what chance
               would give, so unknown dates of birth are probably filled in with round years. The cohort term of one model reads this as real differences between
-              generations. Checked on 26 October 2026, in <code>research/heaping.py</code>.
+              generations. Checked on 26 October 2026, in <code>research/heaping.py</code>. A targeted fix, treating the round-year cohorts as missing and
+              interpolating across them, was considered and not used: the five-year smoothing of the cohort term had been approved before the check, and a
+              test on simulated heaped data covers whether it damps the spikes.
             </li>
             <li>
               <strong>The backtests flatter the models</strong>
