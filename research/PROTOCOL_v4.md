@@ -2,7 +2,7 @@
 
 Written on 26 October 2026, before any v4 scenario was generated or any part of the book was projected. Done beforehand, and disclosed here: one v3 SCR was timed (0.53 seconds, so 1,000 scenarios over five years are affordable), and the number of bonds in each month-end's 91-day auction window was counted (at least five from April 2010 for fixed-rate bonds and June 2010 for inflation-linked; as few as three in some later months). No curve was fitted for v4 and nothing was projected.
 
-Frozen at commit: `PENDING`
+Frozen at commit: `fedf29aeeebc`
 
 The question: over the next five years, how likely is Mdingi Life to stay covered on the R400 million it has, what profit does it report under IFRS 17, and which shocks would break it?
 
