@@ -2,7 +2,7 @@
 
 Written on 26 October 2026, before any part of the v3 book was generated or valued. Done beforehand, and disclosed here: the Prudential Authority's *Financial Soundness Standards for Insurers* (FSI, version 1, in force from 1 July 2018) were read for their parameters, and the PA's published industry figures were looked up (below). Nothing was computed.
 
-Frozen at commit: (not yet)
+Frozen at commit: `545ba7193b24`
 
 The question: on the Solvency Assessment and Management (SAM) standard formula, how much capital does a small South African life insurer need for an annuity book matched with government bonds and a funeral book, and what drives it?
 
