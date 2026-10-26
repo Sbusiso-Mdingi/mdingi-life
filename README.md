@@ -9,7 +9,7 @@ Built in releases. Each one stands on its own and feeds the next.
 | v1 Liabilities | How much does uncertainty about South African mortality move the price of a life annuity? | Run on UN WPP 2024 and on Stats SA registered deaths ([results](research/RESULTS.md)) |
 | v2 Assets | What does the SA government bond curve look like on each auction day, and how well do the assets match the liabilities? | Run on National Treasury auction results, 2010 to 2026 ([results](research/RESULTS_v2.md)) |
 | v3 Balance sheet | What is Mdingi Life's SAM solvency capital requirement, and its cover ratio today? | Run on the standard formula for an invented book of 5,000 annuities and 50,000 funeral policies ([results](research/RESULTS_v3.md)) |
-| v4 Scenarios and reporting | Over the next five years, how likely is Mdingi Life to stay covered, what does it report under IFRS 17, and which shocks would break it? | Protocol written ([plan](research/PROTOCOL_v4.md)) |
+| v4 Scenarios and reporting | Over the next five years, how likely is Mdingi Life to stay covered, what does it report under IFRS 17, and which shocks would break it? | Run on 1,000 scenarios for the curves, five stresses and IFRS 17 ([results](research/RESULTS_v4.md)) |
 
 ## The book
 
@@ -29,13 +29,15 @@ Built in releases. Each one stands on its own and feeds the next.
 ```
 mdingilife/   data, models (B0, LC, CBD, RH), Kannisto tail, annuity factors, scores, bootstrap;
               curves.py: bond cash flows, LI, NS, NSS and the bootstrapped zero curve;
-              sam.py: SAM shocked curves, the monthly projection and the correlation aggregation
+              sam.py: SAM shocked curves, the monthly projection and the correlation aggregation;
+              esg.py: fixed-decay Nelson-Siegel fits and AR(1) factors; ifrs17.py: the CSM and its roll-forward
 research/     fetch, coverage, backtest, annuities, export; PROTOCOL.md and RESULTS.md
               treasury, curves, annuities_v2; PROTOCOL_v2.md and RESULTS_v2.md
               book_v3, balance_v3, keyrate_v3; PROTOCOL_v3.md and RESULTS_v3.md
+              scenarios_v4, projection_v4; PROTOCOL_v4.md and RESULTS_v4.md
 tests/        every model and formula on simulated data with known answers
 service/      FastAPI app serving the results
-dashboard/    Vite front end: the company's site (overview, quotes, customers, investments, capital, how it's built)
+dashboard/    Vite front end: the company's site (overview, quotes, customers, investments, capital, the next five years, how it's built)
 data/book/    v3's invented policies
 data/raw/     source files as downloaded
 ```
@@ -81,6 +83,13 @@ v3 values an invented book on the SAM standard formula, on v2's curves and v1's 
   --deaths data/raw/statssa/mcd_deaths.csv --population data/raw/statssa/wpp_population.csv
 .venv/bin/python -m research.keyrate_v3 \
   --deaths data/raw/statssa/mcd_deaths.csv --population data/raw/statssa/wpp_population.csv   # the amendment
+```
+
+v4 projects the book five years on the v3 balance sheet: 1,000 scenarios for the curves, five named stresses and IFRS 17 alongside. It takes about half an hour on eight cores.
+
+```
+.venv/bin/python -m research.projection_v4 \
+  --deaths data/raw/statssa/mcd_deaths.csv --population data/raw/statssa/wpp_population.csv
 ```
 
 Without `--source` the v1 scripts run on UN WPP 2024, the comparison run.
