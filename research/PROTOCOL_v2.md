@@ -2,7 +2,7 @@
 
 Written on 26 October 2026, before any curve in this repository was fitted. Done beforehand, and disclosed here: National Treasury's auction results and bond schedules were downloaded and reduced to two tables (`research/treasury.py`). To check the parse, clearing yields were compared with each auction's best and worst bids, which showed about 40 rows where a figure is mistyped (a clearing yield of 1.85 for 11.85, a best bid of 113.89) or zero, and the bond codes and terms were checked against the schedules. No yields were plotted, averaged or fitted.
 
-Frozen at commit: `f79f922ff837`
+Frozen at commit: `cc4c12514ee1`
 
 The question: what does the South African government bond curve look like on each auction day, how well can it be read from a handful of auctions, and what does it do to the price and the interest-rate risk of v1's annuities?
 
@@ -113,3 +113,7 @@ Written after the corrected design run, which chose LI for both kinds, and befor
 - **Duration and key rates** are taken on this zero curve, as written. The matching portfolio is unchanged.
 - The backtest, the scores and the tests are unchanged: they score LI's yields.
 - **Reported, as a sensitivity:** prices on NS, the runner-up for both kinds.
+
+### 26 October 2026: freeze commit renamed
+
+The repository history was rewritten to remove a co-author line from commit messages. No file changed, but every commit hash did: the freeze commit `f79f922ff837` is now `cc4c12514ee1`, with the same contents. Results files that record the hash were updated to match.

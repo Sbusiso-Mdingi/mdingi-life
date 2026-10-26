@@ -3,7 +3,7 @@
  "tag": "rh_2019",
  "model": "RH post-peak",
  "last_year": 2019,
- "protocol": "25b5acd95aa5",
+ "protocol": "6335c9c5c418",
  "Male": {
   "model": "RH post-peak",
   "jump_off": 2019,

@@ -59,6 +59,6 @@ def test_guard_blocks_until_frozen(tmp_path, monkeypatch, line):
 
 
 def test_guard_passes_once_frozen(tmp_path, monkeypatch):
-    (tmp_path / "PROTOCOL.md").write_text("# Protocol\n\nFrozen at commit: `25b5acd95aa5`\n")
+    (tmp_path / "PROTOCOL.md").write_text("# Protocol\n\nFrozen at commit: `6335c9c5c418`\n")
     monkeypatch.setattr(protocol, "PROTOCOL", tmp_path / "PROTOCOL.md")
-    assert protocol.require_frozen() == "25b5acd95aa5"
+    assert protocol.require_frozen() == "6335c9c5c418"

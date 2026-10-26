@@ -1,6 +1,6 @@
 # Results: v1 Liabilities
 
-Two runs under the protocol frozen at `25b5acd95aa5`, reported side by side and never mixed:
+Two runs under the protocol frozen at `6335c9c5c418`, reported side by side and never mixed:
 
 1. **UN WPP 2024** (25 October 2026), the protocol's cross-check series, run first because Stats SA's SuperWEB was down. WPP rates are model estimates and smoother than registered deaths.
 2. **Stats SA registered deaths over WPP exposure** (26 October 2026), under the amendment of that date: deaths from the DataFirst unit records, population from WPP. See [below](#stats-sa-registered-deaths).

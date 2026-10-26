@@ -2,7 +2,7 @@
 
 Written on 25 October 2026, before any model in this repository was fitted. UN WPP 2024 life tables have been downloaded and six values were read off to check the file (male life expectancy at birth and at 65 in 2006, 2019 and 2021). The WPP deaths and population files were then loaded and their coverage checked (years, ages, missing and zero cells), and one rate (male, 65, 2019: deaths over population 0.0381, against the life table's 0.0390) was computed to confirm the units. Nothing else has been computed. This file is frozen, and its commit hash recorded here, before the first fit. Later changes are listed at the end with their dates and reasons.
 
-Frozen at commit: `25b5acd95aa5`
+Frozen at commit: `6335c9c5c418`
 
 The question: how much does uncertainty about future South African mortality move the price of a life annuity, and which models can be trusted to say so?
 
@@ -76,3 +76,7 @@ Written before any model was fitted on Stats SA data. Done beforehand, and discl
 - **One sensitivity.** Deaths at every age are divided by that year's completeness at ages 50 to 89, by sex. This lifts each year's total at 50 to 89 to WPP's level while keeping the registered age pattern. It reuses the primary run's windows and models and reports annuity prices only. It measures how much of the price comes from the registration drift and changes nothing else.
 
 Reason: the protocol's primary source could not be fetched as written. This keeps Stats SA's registered deaths, which were the point of the primary series, and takes the only single-age exposure available.
+
+### 26 October 2026: freeze commit renamed
+
+The repository history was rewritten to remove a co-author line from commit messages. No file changed, but every commit hash did: the freeze commit `25b5acd95aa5` is now `6335c9c5c418`, with the same contents. Results files that record the hash were updated to match.
