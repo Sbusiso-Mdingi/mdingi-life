@@ -43,12 +43,24 @@ def dispersion(model) -> float:
     return max(chi2 / (r.D.size - n_params(model)), 1.0)
 
 
+# The largest Poisson mean numpy draws from (just under its own limit, about 9.22e18). Added 27 October 2026,
+# after a v1.4 projection crashed past it (research/PROTOCOL_v1.4.md, post-freeze record): no plan had an overflow
+# rule. Below the cap nothing changes, values or random stream.
+LIMIT = 9.2e18
+
+
+def capped(mu: np.ndarray) -> np.ndarray:
+    """Where the expected deaths reach the cap."""
+    return ~(np.asarray(mu, float) < LIMIT)
+
+
 def draw(mu: np.ndarray, phi: float, rng: np.random.Generator) -> np.ndarray:
-    """Counts with mean mu and variance phi * mu: gamma-Poisson, or Poisson when phi is 1."""
-    mu = np.asarray(mu, float)
+    """Counts with mean mu and variance phi * mu: gamma-Poisson, or Poisson when phi is 1. Means are capped at
+    LIMIT."""
+    mu = np.minimum(np.asarray(mu, float), LIMIT)
     if phi <= 1:
         return rng.poisson(mu).astype(float)
-    return rng.poisson(rng.gamma(mu / (phi - 1), phi - 1)).astype(float)
+    return rng.poisson(np.minimum(rng.gamma(mu / (phi - 1), phi - 1), LIMIT)).astype(float)
 
 
 def observe(log_m: np.ndarray, E: np.ndarray, phi: float, rng: np.random.Generator) -> np.ndarray:

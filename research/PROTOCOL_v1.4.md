@@ -571,3 +571,19 @@ Nothing above is changed. This records how the frozen plan is carried out, and o
 - If that happens to a primary L5 cell (J1, p = 1/30, central prior, either sex), v1.4 does not price.
 
 **Which cells the decision uses.** Condition 6, its power and the completeness-scaled sensitivity use only cells with no failed refits: the women's and men's L5 J1 cells at p = 1/30, on central and on scaled deaths. The p = 1/60 cell is scored on its 499 good refits, and that is reported wherever it appears.
+
+### An overflow in the bootstrap noise, 27 October 2026 (written after seeing the crash, before any v1.4 score was seen)
+
+**The crash.** Stage 1 stopped with `ValueError: lam value too large`. It happened while observation noise was being added to the L3 paths of `chain|Male|L3|J1|1/30|central`. One path's expected deaths went past the largest Poisson mean numpy can draw from (about 9.22e18). Reading the stored paths showed that nine cells have such paths: 1 in Male L3 central, otherwise all at L1 and L2 (up to 34 of 5,000). No L4 cell has one.
+
+**What this plan was missing.** Neither this plan nor any earlier one had an overflow rule. This fills the gap, with the user's approval.
+
+**The fix.** It is a change to the shared bootstrap code (`mdingilife/bootstrap.py`), applied the same way to every cell and every use. When noise is added, the expected deaths, and the gamma-mixed mean, are capped at 9.2e18. Below the cap nothing changes, neither the values nor the random stream. No seed, cutoff, threshold or refit changes.
+
+**What is reported.**
+- Every score gives its number of paths, its capped paths and its paths with a death rate above 1 somewhere. Condition 6's simulated sets give the same counts.
+- Stage 1 is rescored from the stored paths. It is checked against a run of the code before the cap in which only the crash was caught, and every cell without a capped path must give identical numbers.
+
+**Primary cells with capped paths (L3 and L4, J1, p = 1/30, central prior).** Each such cell is scored with the cap and again with its capped paths dropped (the other paths keep the same noise). If a pass or fail flips, the mark is recorded as not robust and counts as a fail. The same applies to condition 3's deviance. This rule was set after seeing the crash.
+
+**A limitation.** Bootstrap projections from very short fitted windows (L1 and L2, a few years after a three-year base) are unstable: many paths reach death rates above 1. They are reported as they stand, with nothing tuned.

@@ -1255,6 +1255,11 @@ export function Built({ r }: { r: Research }) {
               test on simulated heaped data covers whether it damps the spikes.
             </li>
             <li>
+              <strong>Short windows give unstable projections</strong>
+              The bootstrap projections in the v1.4 study are unstable when fitted on very short windows: from a few years of data, many paths reach death rates
+              above 1. These are reported as they stand, and nothing was tuned to remove them.
+            </li>
+            <li>
               <strong>The backtests flatter the models</strong>
               Each holdout period was short and was also used to choose between models, so the scores are likely better than out-of-sample performance would be.
             </li>

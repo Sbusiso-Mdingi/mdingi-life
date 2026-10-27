@@ -428,6 +428,19 @@ def gather() -> tuple[dict, dict, dict]:
     return mains, good, failed
 
 
+def dropped(obs, sims, noisy, b0d, cp, full, rs, failed, key) -> dict:
+    """A primary cell with capped paths, scored again without them (the same noise on the other paths). A mark that
+    flips is not robust and counts as a fail (set 27 October 2026, after the crash)."""
+    assert key not in failed  # refit index = path // PER only when no refit was left out
+    d = score(obs, sims[~cp], noisy[~cp], b0d)
+    flips = [q for q in full["tests"] if full["tests"][q] != d["tests"][q]]
+    full["tests_counted"] = {q: bool(v and q not in flips) for q, v in full["tests"].items()}
+    paths = [{"path": int(i), "refit": int(i // PER), "max_log_m": float(sims[i].max()),
+              **{k: rs[i // PER]["params"][k] for k in ("mu", "sd", "mu_y", "sd_y", "rho", "flagged")},
+              "p": P[CENTRAL], "jump_sizes": "fixed (prior)"} for i in np.flatnonzero(cp)]
+    return {"score": d, "flips": flips, "robust": not flips, "capped": paths}
+
+
 def unscored(failed: dict, key: str) -> bool:
     return key in failed and not failed[key]["scored"]
 
@@ -441,6 +454,18 @@ def label(failed: dict, key: str, res: dict) -> dict:
 
 # Scores -------------------------------------------------------------------------------------------------------
 
+def capped_paths(log_m: np.ndarray, E: np.ndarray) -> np.ndarray:
+    """Paths whose expected deaths reach bootstrap.LIMIT somewhere (the cap, added after the crash)."""
+    with np.errstate(over="ignore"):
+        c = bootstrap.capped(E * np.exp(log_m))
+    return c.reshape(len(c), -1).any(1)
+
+
+def above_1(log_m: np.ndarray) -> int:
+    """Paths with a death rate above 1 somewhere."""
+    return int((np.asarray(log_m).reshape(len(log_m), -1) > 0).any(1).sum())
+
+
 def score(obs: Rates, sims: np.ndarray, noisy: np.ndarray, b0_dev: float) -> dict:
     lo_obs = np.log(obs.m)
     med = np.median(sims, axis=0)
@@ -450,7 +475,8 @@ def score(obs: Rates, sims: np.ndarray, noisy: np.ndarray, b0_dev: float) -> dic
     out = {"deviance": scores.deviance(obs.D, obs.E * np.exp(med)), "B0": b0_dev,
            "annuity_error": err.tolist(), "mean_abs_error": float(np.mean(np.abs(err))),
            "coverage": float(inside.mean()), "covered": int(inside.sum()), "cells": int(inside.size),
-           "width": float(np.exp(hi - lo).mean())}
+           "width": float(np.exp(hi - lo).mean()), "paths": int(len(sims)),
+           "capped_paths": int(capped_paths(sims, obs.E).sum()), "paths_m_above_1": above_1(sims)}
     lo_c, hi_c = COVERED[out["cells"]]
     out["tests"] = {"Q1": bool(out["deviance"] < b0_dev), "Q2": bool(lo_c <= out["covered"] <= hi_c),
                     "Q3": bool(out["mean_abs_error"] < 0.02)}
@@ -473,11 +499,13 @@ def quantiles(x, q=(0.025, 0.5, 0.975)) -> list:
 
 def priced(rs: list, key: str) -> dict:
     fac, e = stack([r[key] for r in rs], "factors"), stack([r[key] for r in rs], "e65")
+    # a path with a rate of 1 or more gives Kannisto a NaN, so its price is left out of the range (counted)
     prices = [{"age": x, "rate": i, "adj": a, **dict(zip(("lo", "median", "hi"), quantiles(fac[:, k]))),
                "left_out": int((~np.isfinite(fac[:, k])).sum())}
               for k, (x, i, a) in enumerate((x, i, a) for x in ENTRY_AGES for i in RATES for a in ADJ)]
     return {"prices": prices, "price65": prices[PRICE65]["median"],
-            "e65": {str(y): dict(zip(("lo", "median", "hi"), quantiles(e[:, k]))) for k, y in enumerate(E65_YEARS)}}
+            "e65": {str(y): dict(zip(("lo", "median", "hi"), quantiles(e[:, k]))) for k, y in enumerate(E65_YEARS)},
+            "e65_left_out": {str(y): int((~np.isfinite(e[:, k])).sum()) for k, y in enumerate(E65_YEARS)}}
 
 
 def roughness(x) -> float:
@@ -521,13 +549,15 @@ def gap(D: np.ndarray, E: np.ndarray, j1: np.ndarray, shift: np.ndarray) -> np.n
 
 def simulated_gaps(j: int, M: dict, rs: list, E: np.ndarray, salt: int) -> dict:
     j1_med, shift_med = medians_2024(M["f"])
-    out = {}
+    out, cap = {}, {}
     for k, key in enumerate(("c6_j1", "c6_shift")):
         paths = stack(rs, key)
+        cap[key] = int(capped_paths(paths, E).sum())
         D = bootstrap.draw(E * np.exp(paths), M["phi"], rng_for(j, 2_000_000 + salt + k))
         out[key] = gap(D, E, j1_med, shift_med)
     thr = float(np.quantile(out["c6_shift"], 0.95))
     return {"threshold_95_shift": thr, "power": float(np.mean(out["c6_j1"] > thr)), "sets": int(len(out["c6_j1"])),
+            "capped_sets": cap,
             "G_under_J1": quantiles(out["c6_j1"]), "G_under_shift": quantiles(out["c6_shift"])}
 
 
@@ -561,12 +591,18 @@ def stage1() -> dict:
                 res["separation"] = jumps.separation(M["f"], M["panel"])
                 j1_med, shift_med = medians_2024(M["f"])
                 res["medians_2024"] = {"J1": j1_med.tolist(), "shift": shift_med.tolist()}
+                l5 = stack(rs, "sims")
+                res["paths_m_above_1_2024"] = {"paths": int(len(l5)), "above_1": above_1(l5)}
             if link != "L5":
                 r = PANELS[deaths_of(job)][s]
                 obs = r.sub(AGES, scored)
                 sims = stack(rs, "sims")
                 b0d = b0_deviance(M["base"], obs)
-                res["score"] = score(obs, sims, bootstrap.observe(sims, obs.E, M["phi"], rng_for(j, 1_000_001)), b0d)
+                noisy = bootstrap.observe(sims, obs.E, M["phi"], rng_for(j, 1_000_001))
+                res["score"] = score(obs, sims, noisy, b0d)
+                cp = capped_paths(sims, obs.E)
+                if model == "J1" and p == CENTRAL and variant == "central" and link in ("L3", "L4") and cp.any():
+                    res["capped_dropped"] = dropped(obs, sims, noisy, b0d, cp, res["score"], rs, failed, key)
                 if link == "L4":
                     nj = stack(rs, "nojump")
                     res["nojump"] = score(obs, nj, bootstrap.observe(nj, obs.E, M["phi"], rng_for(j, 1_000_001)), b0d)
@@ -699,6 +735,15 @@ def stage2() -> dict:
     return full
 
 
+def counted(cell: dict) -> dict:
+    """The marks as counted: a mark that flips without the capped paths is a fail."""
+    return cell["score"].get("tests_counted", cell["score"]["tests"])
+
+
+def deviances(cell: dict) -> list:
+    return [cell["score"]["deviance"]] + ([cell["capped_dropped"]["score"]["deviance"]] if "capped_dropped" in cell else [])
+
+
 def decide(s1: dict, s2: dict) -> dict:
     ch, v1 = s1["chain"], s1["v1"]
     k = lambda s, link, variant="central", model="J1": f"chain|{s}|{link}|{model}|{CENTRAL}|{variant}"
@@ -714,16 +759,17 @@ def decide(s1: dict, s2: dict) -> dict:
         sep = ch[k(s, "L5")]["separation"]
         c = {
             "1_L5_scored_and_passes": bool(s2["L5_scored"] and all(l5["tests"].values())),
-            "2_L3_Q1_Q3_and_L4_Q2R": bool(all(l3["score"]["tests"].values()) and l4["Q2R"]),
-            "3_deviance_L3_L5_below_v1": bool(l3["score"]["deviance"] + l5["deviance"] < v13["deviance"] + v15["deviance"]),
+            "2_L3_Q1_Q3_and_L4_Q2R": bool(all(counted(l3).values()) and l4["Q2R"]),
+            "3_deviance_L3_L5_below_v1": bool(all(d + l5["deviance"] < v13["deviance"] + v15["deviance"]
+                                                  for d in deviances(l3))),
             "4_separation": bool(sep["passes"]),
             "6_jump_not_shift": bool(s2["L5_scored"] and c6["passes"] and c6["power"] >= POWER and not c6["flips"]),
         }
         by_sex[s] = {"conditions": c, "passes_1_to_4_and_6": all(c.values()),
                      "deviance": {"L3": l3["score"]["deviance"], "L5": l5["deviance"],
                                   "v1_L3": v13["deviance"], "v1_L5": v15["deviance"]}}
-        hiv[s] = {"passes_Q1_Q3": all(l3["score"]["tests"].values()),
-                  "below_v1": bool(l3["score"]["deviance"] < v13["deviance"])}
+        hiv[s] = {"passes_Q1_Q3": all(counted(l3).values()),
+                  "below_v1": bool(all(d < v13["deviance"] for d in deviances(l3)))}
     ok = [s for s in SEXES if by_sex[s]["passes_1_to_4_and_6"]]
     g = s1["gate"]
     if len(ok) == 2:
