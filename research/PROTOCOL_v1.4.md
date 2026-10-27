@@ -527,3 +527,32 @@ Run time: 43 minutes on the Mac (8 processes). Raw summaries: `research/results/
 - The annuity product, the annuitant factor of 0.7, the Kannisto tail and the funeral table.
 - Everything on the site. Until v1.4 is run and reported, the site keeps v1 for both sexes.
 - This is not redeployed until the user says so.
+
+## Post-freeze record
+
+### Running v1.4, 27 October 2026 (written after the freeze, before any v1.4 fit to real data)
+
+Nothing above is changed. This records how the frozen plan is carried out, and one failure to run.
+
+**Where it runs.** Not on the Mac, as "Running it" says, but on two Google Cloud VMs in africa-south1-b (t2d-standard-8 and t2d-standard-4, AMD EPYC Milan, 12 cores in all, no external IP), at the user's request, for time. Python 3.12, numpy 2.5.4, scipy 1.18.1. The 500 refits of each fit are cut into chunks and split between the two machines; each refit has its own seed, `SeedSequence(20261031, (job, refit))`, so the results do not depend on the split. One thread per process.
+
+**A failure to run, and its fix (made after seeing the failure).** The guard refused to run: this plan's line "Frozen at commit: 442508e… (27 October 2026)" did not match the pattern in `mdingilife/protocol.py`, which expected the hash to end the line. With the user's approval, the pattern now also accepts a bracketed note after the hash. The plan's text was not touched, and every earlier plan's guard still returns its hash. No result had been seen.
+
+**The runner, `research/v14.py`**, written after the freeze and tested on simulated data only (4 refits per fit) before the real run. It runs in three steps:
+1. `boot`: the main fits and the bootstrap refits;
+2. `stage1`: everything except 2024's deaths, including condition 6's power, written to `research/results/v14_stage1.json`;
+3. `stage2`: the only step that reads 2024's deaths: the completeness check, L5's scores, G, and the decision, written to `research/results/v14.json`.
+
+**Choices the plan left open, settled now:**
+- **Data:** registered deaths from `mcd_deaths.csv` (unknown ages and sexes spread as before), over WPP exposure for 1997 to 2022. The completeness-scaled run uses `mcd_deaths_scaled.csv`; at L5, its 2024 deaths are divided by 2024's own ratio of registered to WPP deaths. The 2024 exposure is WPP 2024's projected 1 July population.
+- **φ:** from the first step 1 fit (b and κ before step 3), with (ages − 1) + years parameters.
+- **The bootstrap redraw:** deaths at ages 50 to 89 in every fitted year are drawn at φ from the fitted rates a + bK̂ + (age pattern)·N̂, which equal the final step 1 fit. In the base years, ages 45 to 49 are drawn from the graduated a(x). a(x) is re-graduated with λ held, and steps 1 to 3 are refitted with the link's settings.
+- **The projection:** each refit's K starts from its K̂ at the last fitted year, a random walk with its own μ̂ and σ̂. Jumps are I ~ Bernoulli(p), Y ~ Normal(μ̂_Y, σ̂_Y²), at its bᴶ. The decaying variant carries its N̂ at the last year forward at ρ̂. Each refit gives 10 paths, so 5,000 in all.
+- **L4's no-jump model:** the same refits and the same random walk, with N = 0 (no future jumps, and nothing carried); observation noise on the same seed as the jump model's.
+- **Scores:** as in v1.3: deviance of the median path, coverage of the 95% interval with observation noise at φ, the mean width exp(upper − lower), and the annuity error of the median. B0 is the mean of the base years' crude rates, held flat.
+- **Sensitivities:** the three values of p, for J1 and the decaying variant, at every link; μ_Y = 0.05 and 0.30 for J1 at L1 to L4 (σ_Y stays 0.05); completeness-scaled deaths for J1 at every link, with v1 refitted on scaled deaths beside it.
+- **v1:** Renshaw-Haberman on ages 50 to 89 from 2006, with v1.1's bootstrap (500 refits, 5,000 paths, deaths at v1's φ), unanchored, scored with noise at v1's φ. L3 fits 2006 to 2012. L4 and L5 share one fit on 2006 to 2019. **For the mixed-set gate**, v1's price at 65 is its published production figure (13.53 men, 16.05 women). Its e65 in 2026 and 2036 come from rerunning v1's production bootstrap here (Poisson redraws, 2006 to 2022 with Covid out, 500 refits), because the published figures give e65 only for 2020 and 2030.
+- **Condition 6:** the medians are J1's a + b(K̂(2022) + 2μ̂) and the shift model's a + b₀(κ(2022) + 2μ̂), with b₀ and κ from step 1. The simulated data sets take 2 paths from each of the 500 refits (1,000 sets). The shift model's paths use the same random walk and jump draws as J1's; they differ only in the starting level and b. Deaths are drawn at φ on the 2024 exposure. G and the power are computed for every J1 fit at L5 (each p, and scaled deaths); the counted one is the central fit on registered deaths.
+- **The scaling sensitivity** multiplies 2024's deaths by the 2022 ratio over the 2024 ratio. **On Stats SA's population**, the simulated G and its 95th percentile are recomputed on that exposure.
+- **Pricing:** every fit at L5 is projected from 2022, trend-only (no future jumps; the decaying variant carries N̂(2022) at ρ̂), and with future jumps at that fit's own p. Prices are per path, with Kannisto above 89, and e65 is in 2026, 2036 and 2056.
+- **A refit that fails** is recorded, and nothing is scored until it is reported.

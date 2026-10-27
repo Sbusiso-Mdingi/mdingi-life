@@ -16,7 +16,8 @@ PROTOCOL_V1_1 = ROOT / "research" / "PROTOCOL_v1.1.md"
 PROTOCOL_V1_2 = ROOT / "research" / "PROTOCOL_v1.2.md"
 PROTOCOL_V1_3 = ROOT / "research" / "PROTOCOL_v1.3.md"
 PROTOCOL_V1_4 = ROOT / "research" / "PROTOCOL_v1.4.md"
-LINE = re.compile(r"^Frozen at commit: `?([0-9a-f]{7,40})`?\s*$", re.M)
+# the hash may be followed by a bracketed note, as in v1.4's "(27 October 2026)"
+LINE = re.compile(r"^Frozen at commit: `?([0-9a-f]{7,40})`?(?:\s+\([^)]*\))?\s*$", re.M)
 
 
 def frozen_hash(path=None) -> str | None:
