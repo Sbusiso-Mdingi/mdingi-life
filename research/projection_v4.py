@@ -109,6 +109,9 @@ def age(b: Book, dec, ilb_rise: float, cost_rise: float) -> Book:
     f["years_in_force"] += 1
     for col in ("sum_assured", "premium", "policies"):
         f[col] = f[col] * wf
+    if getattr(b, "rising", None) is not None:     # v5: rising benefits grow by the year's inflation, floored and capped
+        lo, hi = CTX["rising_bounds"]
+        f["sum_assured"] = f["sum_assured"] * np.where(b.rising, 1 + min(max(ilb_rise, lo), hi), 1.0)
     f["count"] = f["count"] * wf * (1 + cost_rise)
     n.ann, n.fun = a, f
     n.years = b.years + 1
@@ -194,6 +197,8 @@ def revalue(r: dict, settle, curves: dict) -> float:
 # --- a path --------------------------------------------------------------------------------------------------------------
 
 def valuation(b: Book, curves: dict, settle, assets=None, holdings=None, matched: bool = True) -> dict:
+    if "valuation" in CTX:                         # v5 and later supply their own balance sheet
+        return CTX["valuation"](b, curves, settle, assets, holdings, matched)
     return run(CTX["grids"], CTX["table"], b.basis, {b.basis.curve: curves}, CTX["bonds"], settle, matched=matched,
                method="key", book=b, assets=assets, holdings=holdings, scale=CTX.get("scale", 1.0))
 
@@ -416,10 +421,13 @@ def main() -> None:
     print("E1", {k: round(v["ratio"], 3) for k, v in out["checks"]["E1"].items()})
 
 
-def compute(a, curves, bonds, days, settle, grids, deaths: str, population: str, n: int = sv.N) -> dict:
+def compute(a, curves, bonds, days, settle, grids, deaths: str, population: str, n: int = sv.N,
+            make_book=None) -> dict:
+    """`make_book(basis)`, if given, builds the book (v5 and later); by default v3's book on v3's table."""
     table = pd.read_csv(TABLE)
     fwd0 = curves["LI"]
     CTX.update(grids=grids, table=table, bonds=bonds, settle=settle, fwd0=fwd0)
+    make_book = make_book or (lambda basis: Book(grids, table, basis))
 
     # The scenario generator.
     points = sv.month_points(a)
@@ -432,7 +440,7 @@ def compute(a, curves, bonds, days, settle, grids, deaths: str, population: str,
     sims_frozen, _ = sv.paths(cal_frozen, n)
     print("tau", cal["tau"], "phi", np.round(cal["ar"].phi, 4), "capped", cal["ar"].capped, flush=True)
 
-    book0 = start(Book(grids, table, Basis()))
+    book0 = start(make_book(Basis()))
     r0 = valuation(book0, fwd0, settle)
     CTX.update(book0=book0, r0=r0, cal={"main": cal, "covid": cal_covid, "frozen": cal_frozen})
     print(f"t=0 cover {r0['cover']:.4f}", flush=True)
@@ -448,7 +456,7 @@ def compute(a, curves, bonds, days, settle, grids, deaths: str, population: str,
     fall[[0, cal["n"]]] -= RATE_FALL
     fall_curves = fw(cal["ar"].central(fall, sv.MONTHS)[::12])
     ratio = pandemic_ratio(deaths, population)
-    long_book = start(Book(grids, table, Basis(annuitant_adj=LONGEVITY_ADJ)))
+    long_book = start(make_book(Basis(annuitant_adj=LONGEVITY_ADJ)))
     wave_book = lapse_wave(book0, LAPSE_WAVE)
     stresses = {
         "S1 Rates fall": dict(curves=fall_curves, book=book0),
@@ -493,7 +501,7 @@ def compute(a, curves, bonds, days, settle, grids, deaths: str, population: str,
     no_rematch_central = path(central_curves, book0, r0, rematch=False)
 
     # The scenarios.
-    ctx = {k: CTX[k] for k in ("grids", "table", "bonds", "settle", "fwd0", "book0", "r0", "cal")}
+    ctx = {k: CTX[k] for k in ("grids", "table", "bonds", "settle", "fwd0", "book0", "r0", "cal") + CTX.get("extra", ())}
     res = scenarios(sims, "main", True, ctx)
     print("scenarios done", flush=True)
     res_covid = scenarios(sims_covid, "covid", True, ctx)

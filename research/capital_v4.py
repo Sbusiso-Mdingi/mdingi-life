@@ -65,11 +65,12 @@ def setup(deaths: str, population: str) -> dict:
     return {"cal": cal, "sims": sims, "book0": book0, "r0": r0, "central": central_curves, "stresses": stresses}
 
 
-def level(s: dict, funds: float) -> dict:
-    """One level of own funds at t = 0: holdings and bill scaled by k, then the scenarios and the stresses."""
+def level(s: dict, funds: float, k: float | None = None) -> dict:
+    """One level of own funds at t = 0: holdings and bill scaled by k (by default in proportion to the assets; v6
+    passes k = 1, the change all in the bill), then the scenarios and the stresses."""
     r400 = s["r0"]
     total = r400["assets"]["total"] - BASE_FUNDS + funds
-    k = total / r400["assets"]["total"]
+    k = total / r400["assets"]["total"] if k is None else k
     pv.CTX["scale"] = k
     r0 = pv.valuation(s["book0"], pv.CTX["fwd0"], pv.CTX["settle"], assets=total)
     pv.CTX.update(book0=s["book0"], r0=r0, cal={"main": s["cal"]})
@@ -86,7 +87,8 @@ def level(s: dict, funds: float) -> dict:
         stressed[name] = {"cover": p["cover"], "lowest": float(min(p["cover"])), "capital_to_restore": max(short)}
         print(f"  {name}: lowest {min(p['cover']):.3f}", flush=True)
 
-    ctx = {key: pv.CTX[key] for key in ("grids", "table", "bonds", "settle", "fwd0", "book0", "r0", "cal", "scale")}
+    ctx = {key: pv.CTX[key] for key in ("grids", "table", "bonds", "settle", "fwd0", "book0", "r0", "cal", "scale")
+           + pv.CTX.get("extra", ())}
     res = pv.scenarios(s["sims"], "main", True, ctx)
     sp = pv.spread(res)
     print(f"  covered throughout {sp['A1']['share_covered']:.3f}", flush=True)

@@ -71,6 +71,7 @@ def toy(cap=iv.CAP):
     b.ann = pd.DataFrame({"income": [12_000.0], "count": [1], "new": [True]})
     b.mu_ann = {lv: np.full((1, years), 0.03 * (0.9 if lv else 1)) for lv in (False, True)}
     b.ilb = np.array([False])
+    b.n_ann, b.n_fun = 1, 5
     b.fun = pd.DataFrame({"sex": ["Male"] * 2, "age": [40] * 2, "years_in_force": [0, 3], "benefit": ["level", "rising"],
                           "sum_assured": [20_000.0, 30_000.0], "premium": [90.0, 160.0], "count": [2, 3]})
     b.mu_fun = np.tile(np.exp(-8 + 0.09 * (40 + np.arange(years))), (2, 1)).clip(max=5)
@@ -107,3 +108,44 @@ def test_the_expense_stress_leaves_growth_alone():
     b, cv = toy()
     assert np.array_equal(b5.liabilities(b, cv, BASE)["rising_claims"],
                           b5.liabilities(b, cv, LIFE_STRESSES["expense"])["rising_claims"])
+
+
+# --- v6: the book scaled by rule (research/mix_v6.py) ---------------------------------------------------------------
+
+def test_scaling_is_linear_in_each_line():
+    from research import mix_v6 as mx
+    b, cv = toy()
+    base, s = mx.bel(b, cv), mx.bel(mx.scaled(b, 2.0, 3.0), cv)
+    assert s["annuities"] == pytest.approx(2 * base["annuities"], rel=1e-13)
+    assert s["funeral"] == pytest.approx(3 * base["funeral"], rel=1e-13)
+    assert mx.bel(mx.scaled(b), cv) == base
+
+
+def test_the_mix_is_mortality_neutral():
+    from research import mix_v6 as mx
+    b, cv = toy()
+    b.fun = b.fun.assign(premium=[40.0, 70.0])                   # cheaper, so funeral BEL rises with mortality
+    e = mx.exposures(b, cv)
+    r = mx.mix(e)
+    assert e["annuities"] < 0 < e["funeral"]
+    assert abs(mx.exposures(mx.scaled(b, 1.0, r), cv)["total"]) < 1e-9 * abs(e["annuities"])
+
+
+def test_mix_refuses_exposures_of_the_wrong_sign():
+    from research import mix_v6 as mx
+    with pytest.raises(ValueError):
+        mx.mix({"annuities": 1.0, "funeral": 1.0})
+
+
+def test_size_finds_the_target_cover():
+    from research import mix_v6 as mx
+    cover = lambda a: 400 / (100 * a + 5 * a ** 2 + 1)            # falls with size, not in proportion
+    a = mx.size(cover, 1.8)
+    assert cover(a) == pytest.approx(1.8, rel=1e-12)
+
+
+def test_moved_by_year():
+    from research import mix_v6 as mx
+    b, _ = toy()
+    m = mx.moved(b, 0.99 ** np.arange(YEARS))
+    assert np.allclose(m.mu_fun[:, 3], b.mu_fun[:, 3] * 0.99 ** 3) and np.allclose(m.mu_ann[True][:, 0], b.mu_ann[True][:, 0])

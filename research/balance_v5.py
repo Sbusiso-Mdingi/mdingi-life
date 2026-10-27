@@ -138,7 +138,12 @@ def rising_risk(b: Book, cv: Curves) -> dict:
 def hedge(b: Book, cv: Curves, bonds: dict, settle, weight: float = 1e3) -> dict:
     """Non-negative holdings in every nominal and inflation-linked bond that match the rising claims' value (a row
     weighted by `weight`) and come nearest their eight key-rate DV01s, then scaled to the value exactly."""
-    liab = rising_risk(b, cv)
+    return key_rate_units(rising_risk(b, cv), cv, bonds, settle, weight)
+
+
+def key_rate_units(liab: dict, cv: Curves, bonds: dict, settle, weight: float = 1e3) -> dict:
+    """v3's key-rate method on both curves at once: `liab` has a value and DV01s keyed (curve, key); each bond has
+    DV01s on its own curve only."""
     book = {}
     for kind in ("nominal", "real"):
         for code, (t, cf) in bond_book(bonds, settle, kind).items():
