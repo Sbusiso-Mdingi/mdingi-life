@@ -1,0 +1,12 @@
+{
+  "Male": {
+    "max_rel_vs_outside": 4.948807261540011e-06,
+    "share_equal_at_6g": 1.0,
+    "max_rel_vs_full_precision": 8.77844832025687e-06
+  },
+  "Female": {
+    "max_rel_vs_outside": 4.968880471079018e-06,
+    "share_equal_at_6g": 1.0,
+    "max_rel_vs_full_precision": 1.2774967850459618e-05
+  }
+}
