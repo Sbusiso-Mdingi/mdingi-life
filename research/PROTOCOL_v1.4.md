@@ -556,3 +556,18 @@ Nothing above is changed. This records how the frozen plan is carried out, and o
 - **The scaling sensitivity** multiplies 2024's deaths by the 2022 ratio over the 2024 ratio. **On Stats SA's population**, the simulated G and its 95th percentile are recomputed on that exposure.
 - **Pricing:** every fit at L5 is projected from 2022, trend-only (no future jumps; the decaying variant carries N̂(2022) at ρ̂), and with future jumps at that fit's own p. Prices are per path, with Kannisto above 89, and e65 is in 2026, 2036 and 2056.
 - **A refit that fails** is recorded, and nothing is scored until it is reported.
+
+### A failed refit, 27 October 2026 (written after seeing the failure, before any v1.4 score was seen)
+
+**The failure.** After the bootstrap, the collector stopped as planned. Of the 48,000 refits, none was missing and one had failed:
+- **Cell:** women, L5, J1, p = 1/60, central prior (`chain|Female|L5|J1|1/60|central`, job 74). This is a jump-frequency sensitivity, not a primary cell.
+- **Refit:** index 80 of 500 (0 to 499), seed `SeedSequence(20261031, (74, 80))`.
+- **Error:** `LinAlgError: Matrix is not positive definite`.
+
+**The fix, made after seeing the failure, with the user's approval.** It is one change to the runner: the collector now records failed refits and leaves them out, instead of stopping. A missing refit still stops the run. Each cell that loses refits is labelled with the number used ("499 of 500 refits") and lists its failures. Nothing else changes: no cutoff, threshold, seed or other refit. The failure was not investigated.
+
+**A rule added now, after seeing this failure and before any further result.** The 1% threshold was set after seeing this failure.
+- A cell with more than 1% of its refits failed (more than 5 of 500) is reported as not scored.
+- If that happens to a primary L5 cell (J1, p = 1/30, central prior, either sex), v1.4 does not price.
+
+**Which cells the decision uses.** Condition 6, its power and the completeness-scaled sensitivity use only cells with no failed refits: the women's and men's L5 J1 cells at p = 1/30, on central and on scaled deaths. The p = 1/60 cell is scored on its 499 good refits, and that is reported wherever it appears.

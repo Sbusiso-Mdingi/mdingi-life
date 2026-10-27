@@ -59,6 +59,7 @@ START = YEAR - 2022 - 1                     # 2026 is the fourth year after 2022
 H_PRICE = START + kannisto.TOP - min(ENTRY_AGES) + 1
 E65_YEARS = (2026, 2036, 2056)
 RISE, POWER, BAND_PP, MIN_RATIO = 0.25, 0.5, 0.02, 0.85
+MAX_FAILED = 0.01                           # set 27 October 2026, after seeing one refit fail (post-freeze record)
 PRICE65 = [(x, i, a) for x in ENTRY_AGES for i in RATES for a in ADJ].index((65, 0.04, 0.7))
 V1_PRICE65 = {"Male": 13.53, "Female": 16.05}   # v1's published production prices (RESULTS.md)
 COST = {("J1", False): 0.5, ("decay", False): 1.5, ("J1", True): 3.0, ("decay", True): 16.0, "v1": 2.0}
@@ -400,8 +401,10 @@ def boot(part: int, cores: list[int]) -> None:
     print(f"part {part}: done in {(time.time() - t0) / 60:.1f} min", flush=True)
 
 
-def gather() -> tuple[dict, dict]:
-    """Every part's main fits and refits, each job's refits in order. Stops if any chunk is missing or failed."""
+def gather() -> tuple[dict, dict, dict]:
+    """Every part's main fits and refits, each job's good refits in order, and the failed ones. Stops if any chunk
+    is missing. Failed refits are recorded and left out (added 27 October 2026, after seeing one fail: see the
+    post-freeze record); a cell with more than MAX_FAILED of its refits failed is not scored."""
     mains, refit = {}, {}
     for path in sorted((out_dir() / "v14_parts").glob("part*.pkl")):
         with open(path, "rb") as fh:
@@ -411,11 +414,29 @@ def gather() -> tuple[dict, dict]:
             refit.setdefault(j, {}).update(res)
     J = jobs()
     missing = [name(J[j]) for j in range(len(J)) if len(refit.get(j, {})) != refits()]
-    errors = [(name(J[j]), i, r["error"]) for j in refit for i, r in refit[j].items() if "error" in r]
-    if missing or errors:
-        print(json.dumps({"missing": missing, "errors": errors[:50], "n_errors": len(errors)}, indent=1))
-        sys.exit("refits are missing or failed: nothing is scored. Report this before any fix.")
-    return mains, {j: [refit[j][i] for i in range(refits())] for j in refit}
+    if missing:
+        print(json.dumps({"missing": missing}, indent=1))
+        sys.exit("refits are missing: nothing is scored. Report this before any fix.")
+    failed = {name(J[j]): {"failed": [{"refit": i, "seed": [SEED, j, i], "error": r["error"]}
+                                      for i, r in sorted(refit[j].items()) if "error" in r]} for j in refit}
+    failed = {k: v for k, v in failed.items() if v["failed"]}
+    for v in failed.values():
+        v["refits_used"] = f"{refits() - len(v['failed'])} of {refits()} refits"
+        v["scored"] = len(v["failed"]) <= MAX_FAILED * refits()
+    print(json.dumps({"failed_refits": failed}, indent=1))
+    good = {j: [refit[j][i] for i in range(refits()) if "error" not in refit[j][i]] for j in refit}
+    return mains, good, failed
+
+
+def unscored(failed: dict, key: str) -> bool:
+    return key in failed and not failed[key]["scored"]
+
+
+def label(failed: dict, key: str, res: dict) -> dict:
+    """Marks a cell scored on fewer than all its refits ("499 of 500 refits")."""
+    if key in failed:
+        res = {"refits_used": failed[key]["refits_used"], "failed_refits": failed[key]["failed"]} | res
+    return res
 
 
 # Scores -------------------------------------------------------------------------------------------------------
@@ -521,13 +542,17 @@ def gate(p65: dict, e: dict) -> dict:
 # Stage 1 ------------------------------------------------------------------------------------------------------
 
 def stage1() -> dict:
-    mains, refit = gather()
+    mains, refit, failed = gather()
     J = jobs()
     E24 = exposure_2024()
     out = {"protocol_v1_4": None if SIM else require_frozen(PROTOCOL_V1_4), "seed": SEED, "refits": refits(),
-           "paths": refits() * PER, "simulated": SIM, "chain": {}, "v1": {}, "pricing": {}, "condition6_power": {}}
+           "paths": refits() * PER, "simulated": SIM, "failed_refits": failed, "not_scored": [],
+           "chain": {}, "v1": {}, "pricing": {}, "condition6_power": {}}
     for j, job in enumerate(J):
         M, rs, key = mains[j], refit[j], name(job)
+        if unscored(failed, key):
+            out["not_scored"].append(key)
+            continue
         if job[0] == "chain":
             _, s, link, model, p, variant = job
             (b0, b1), last, scored, _ = LINKS[link]
@@ -547,10 +572,11 @@ def stage1() -> dict:
                     res["nojump"] = score(obs, nj, bootstrap.observe(nj, obs.E, M["phi"], rng_for(j, 1_000_001)), b0d)
                     res["Q2R"] = bool(res["score"]["covered"] >= res["nojump"]["covered"])
             else:
-                out["pricing"][key] = {"trend_only": priced(rs, "trend_only"), "with_jumps": priced(rs, "with_jumps")}
+                out["pricing"][key] = label(failed, key, {"trend_only": priced(rs, "trend_only"),
+                                                          "with_jumps": priced(rs, "with_jumps")})
                 if model == "J1":
-                    out["condition6_power"][key] = simulated_gaps(j, M, rs, E24[s], 0)
-            out["chain"][key] = res
+                    out["condition6_power"][key] = label(failed, key, simulated_gaps(j, M, rs, E24[s], 0))
+            out["chain"][key] = label(failed, key, res)
         elif job[0] == "v1":
             _, s, link, _, _, variant = job
             last, scored = V1_LINKS[link]
@@ -568,15 +594,17 @@ def stage1() -> dict:
                 base = r.sub(years=range(*(LINKS[lk][0][0], LINKS[lk][0][1] + 1)))
                 res[lk] = score(obs, sm, bootstrap.observe(sm, obs.E, M["phi"], rng_for(j, 1_000_001)),
                                 b0_deviance(base, obs))
-            out["v1"][key] = res
+            out["v1"][key] = label(failed, key, res)
         else:
             out["v1"][key] = {"phi": M["phi"], "converged": M["converged"],
                               "refits_not_converged": int(sum(not r["converged"] for r in rs)),
                               "production": priced(rs, "prod"), "price65_published": V1_PRICE65[job[1]]}
+            out["v1"][key] = label(failed, key, out["v1"][key])
     out["gate"] = gates(out)
     path = out_dir() / "v14_stage1.json"
     path.write_text(json.dumps(out, indent=1, default=lambda o: o.tolist() if hasattr(o, "tolist") else float(o)))
-    print(json.dumps({"condition6_power": out["condition6_power"], "gate": out["gate"]}, indent=1, default=float))
+    print(json.dumps({"condition6_power": out["condition6_power"], "gate": out["gate"],
+                      "not_scored": out["not_scored"]}, indent=1, default=float))
     print(f"wrote {path}")
     return out
 
@@ -607,7 +635,7 @@ def gates(out: dict) -> dict:
 
 def stage2() -> dict:
     s1 = json.loads((out_dir() / "v14_stage1.json").read_text())
-    mains, refit = gather()
+    mains, refit, failed = gather()
     J = jobs()
     pop = wpp_2024("Pop")
     E24, Ess = exposure_2024(), statssa_2024(pop)
@@ -624,6 +652,8 @@ def stage2() -> dict:
     out = {"completeness": comp, "L5_scored": scored, "caveat": CAVEAT, "L5": {}, "v1_L5": {}, "condition6": {}}
     for j, job in enumerate(J):
         M, rs, key = mains[j], refit[j], name(job)
+        if unscored(failed, key):
+            continue
         if job[0] == "chain" and job[2] == "L5":
             s, variant = job[1], job[5]
             D = D24[s] / comp[s]["2024"] if variant == "scaled" else D24[s]
@@ -633,7 +663,7 @@ def stage2() -> dict:
                 sims = stack(rs, "sims")
                 b0d = b0_deviance(M["base"], obs)
                 res[pop_name] = score(obs, sims, bootstrap.observe(sims, obs.E, M["phi"], rng_for(j, 1_000_000 + salt)), b0d)
-            out["L5"][key] = res
+            out["L5"][key] = label(failed, key, res)
             if job[3] == "J1":
                 j1_med, shift_med = medians_2024(M["f"])
                 pw = s1["condition6_power"][key]
@@ -648,7 +678,7 @@ def stage2() -> dict:
                 ss = simulated_gaps(j, M, rs, Ess[s], 10)
                 Gss = float(gap(D, Ess[s], j1_med, shift_med))
                 c6["statssa_population"] = ss | {"G": Gss, "passes": bool(Gss > ss["threshold_95_shift"])}
-                out["condition6"][key] = c6
+                out["condition6"][key] = label(failed, key, c6)
         elif job[0] == "v1" and job[2] == "L45":
             s, variant = job[1], job[5]
             D = D24[s] / comp[s]["2024"] if variant == "scaled" else D24[s]
@@ -659,7 +689,7 @@ def stage2() -> dict:
                 obs = Rates(s, AGES, np.array([2024]), D[:, None], E[:, None])
                 res[pop_name] = score(obs, sims, bootstrap.observe(sims, obs.E, M["phi"], rng_for(j, 1_000_000 + salt)),
                                       b0_deviance(base, obs))
-            out["v1_L5"][key] = res
+            out["v1_L5"][key] = label(failed, key, res)
     out["decision"] = decide(s1, out)
     full = s1 | {"stage2": out}
     path = out_dir() / "v14.json"
@@ -672,6 +702,9 @@ def stage2() -> dict:
 def decide(s1: dict, s2: dict) -> dict:
     ch, v1 = s1["chain"], s1["v1"]
     k = lambda s, link, variant="central", model="J1": f"chain|{s}|{link}|{model}|{CENTRAL}|{variant}"
+    lost = [k(s, "L5") for s in SEXES if k(s, "L5") in s1["not_scored"]]
+    if lost:  # more than 1% of a primary L5 cell's refits failed: v1.4 does not price
+        return {"primary_L5_not_scored": lost, "prices_on": {s: "v1" for s in SEXES}}
     by_sex, hiv = {}, {}
     for s in SEXES:
         l3, l4 = ch[k(s, "L3")], ch[k(s, "L4")]
@@ -704,7 +737,7 @@ def decide(s1: dict, s2: dict) -> dict:
     both = all(hiv[s]["passes_Q1_Q3"] for s in SEXES)
     hiv_verdict = ("handles the HIV years" if both and all(hiv[s]["below_v1"] for s in SEXES)
                    else "no better than v1" if both else "does not handle the HIV years")
-    return {"by_sex": by_sex, "gate_used": gate_used, "prices_on": on, "hiv": hiv | {"verdict": hiv_verdict}}
+    return {"by_sex": by_sex, "gate_used": gate_used, "primary_L5_not_scored": lost, "prices_on": on, "hiv": hiv | {"verdict": hiv_verdict}}
 
 
 def main() -> None:
