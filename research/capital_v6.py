@@ -79,14 +79,19 @@ def cover_at(s: dict, funds: float) -> float:
 
 
 def solve(s: dict) -> float:
-    """The own funds at which cover is TARGET, bracketed around the R400 million SCR."""
+    """The own funds at which cover is TARGET, bracketed around the R400 million SCR, then raised a rand at a time
+    until cover is at least TARGET (added after seeing the first run: its root gave 0.99999999991, below 1 at t = 0,
+    so every path counted as uncovered)."""
     scr = s["r0"]["scr"]
     lo, hi = 0.5 * scr, 1.5 * scr
     while cover_at(s, lo) > TARGET:
         lo /= 2
     while cover_at(s, hi) < TARGET:
         hi *= 2
-    return brentq(lambda f: cover_at(s, f) - TARGET, lo, hi, xtol=1.0)
+    f = brentq(lambda f: cover_at(s, f) - TARGET, lo, hi, xtol=1.0)
+    while cover_at(s, f) < TARGET:
+        f += 1.0
+    return f
 
 
 def main() -> None:
@@ -102,7 +107,7 @@ def main() -> None:
     s = setup(args.deaths, args.population, args.grids_cache)
     funds = solve(s)
     lv = c4.level(s, funds, k=1.0)
-    check = {"cover": lv["cover"], "pass": bool(abs(lv["cover"] - TARGET) < TOL)}
+    check = {"cover": lv["cover"], "pass": bool(TARGET <= lv["cover"] < TARGET + TOL)}
     out = {"protocol": frozen, "rule": "the change in own funds is in the 182-day bill; the match stays on the BEL", "target_cover": TARGET,
            "levels": {"cover 1.0": lv}, "checks": {"cover": check}}
     OUTFILE.write_text(json.dumps(out, indent=1, default=float))
