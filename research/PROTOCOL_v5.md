@@ -2,7 +2,7 @@
 
 **A judged basis, not a tested one. Written on 27 October 2026, before any part of v5 was run in this repository.** Done beforehand, and disclosed here: the whole mortality method below was built outside the repository between 25 and 27 October 2026, on the same Stats SA and WPP data, while looking at its results, 2022 and 2024 included. Every choice in it was made with those results in view. So nothing below scores the table against data it has not seen, and no pass mark decides whether it is used: it is used because the user chose it, for the reasons given with each choice. Nothing in the book, v3 or v4 has been valued with it. Also done beforehand: FSI 4.1's interest rate volatility sections were read for the rising benefit. No inflation volatility was estimated and no option was valued.
 
-Frozen at commit: (filled in when this is committed)
+Frozen at commit: `5039d84c999a` (27 October 2026)
 
 The question: what do funeral policies cost, and what capital does the company need, when funeral mortality starts from 2024 and keeps improving, and half of the policies' benefits rise with inflation?
 
