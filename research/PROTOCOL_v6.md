@@ -2,7 +2,7 @@
 
 **Written on 27 October 2026, after v5's v3 results were seen** (funeral BEL −R84.4 million, SCR R424.6 million, cover 0.942 at R400 million). Those results are why the two rules below were asked for: the book's 5,000 annuitants and 50,000 funeral policies were invented counts, with nothing behind them. The two rules, the whole-book matching (Q1 below) and the capital levels (Q2) were settled by the user on 27 October 2026. Nothing in v6 has been run on the real book. Seen before freezing: a test of the code with invented annuitant mortality (a Gompertz line, not v1's) and the real funeral book, market and inflation model. It gave a mix of about 20 funeral units per annuity unit, a size of about 0.12 of v5's annuities, and, at that size, a lapse charge and a nominal interest rate charge from the funeral line larger than the mortality and longevity charges. Q1 below comes from that test.
 
-Frozen at commit: (filled in when this is committed)
+Frozen at commit: `9e59992c5521` (27 October 2026)
 
 The question: how big should each line be, if the funeral book is sized so its mortality risk offsets the annuities' longevity risk, and the whole book is sized so the company's cover equals the industry's?
 
