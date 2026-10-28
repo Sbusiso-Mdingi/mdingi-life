@@ -44,7 +44,7 @@ export function App({ embedded }: { embedded: boolean }) {
     if (!embedded) window.scrollTo({ top: 0 });
   };
 
-  const ready = research?.v2 && research.v6?.book;
+  const ready = research?.v2 && research.v7?.book;
   return (
     <div className="site">
       <header className="topbar">
@@ -73,7 +73,7 @@ export function App({ embedded }: { embedded: boolean }) {
             {tab === "customers" && <Customers r={research} />}
             {tab === "investments" && <Investments r={research} />}
             {tab === "capital" && <Capital r={research} />}
-            {tab === "future" && (research.v6?.projection ? <Future r={research} /> : <div className="loading">The five-year projection has not been run yet.</div>)}
+            {tab === "future" && (research.v7?.projection ? <Future r={research} /> : <div className="loading">The five-year projection has not been run yet.</div>)}
             {tab === "built" && <Built r={research} />}
           </>
         )}

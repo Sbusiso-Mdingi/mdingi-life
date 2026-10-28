@@ -1,0 +1,42 @@
+{
+ "frozen": {
+  "paths": 1000,
+  "paths_with_empty_match": 230,
+  "year_ends_empty": 491,
+  "by_year": {
+   "2": 85,
+   "3": 129,
+   "4": 145,
+   "5": 132
+  },
+  "bel_m": {
+   "min": -782.7477187739053,
+   "median": -94.86449440924233,
+   "max": -0.34932248344635963,
+   "share_le_0": 1.0
+  },
+  "A1_all": 0.184,
+  "A1_affected": 0.12608695652173912,
+  "A1_unaffected": 0.2012987012987013
+ },
+ "covid": {
+  "paths": 1000,
+  "paths_with_empty_match": 0,
+  "year_ends_empty": 0,
+  "by_year": {},
+  "bel_m": null,
+  "A1_all": 0.979,
+  "A1_affected": null,
+  "A1_unaffected": 0.979
+ },
+ "no_rematch": {
+  "paths": 1000,
+  "paths_with_empty_match": 0,
+  "year_ends_empty": 0,
+  "by_year": {},
+  "bel_m": null,
+  "A1_all": 0.97,
+  "A1_affected": null,
+  "A1_unaffected": 0.97
+ }
+}

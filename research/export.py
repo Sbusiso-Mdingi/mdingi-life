@@ -25,6 +25,11 @@ the book at v6's scales with the v5 premium rates by benefit, and v4's projectio
 the cover 1.0 level (capital_v6.json). With --only-v6, v6 is added to the existing data/research.json and nothing is
 refitted.
 
+If balance_v7.json exists it bundles v7 the same way: the balance sheet with default risk and the sovereign reverse
+stress, the review and lapse variants, the book with the level rates and the age-rated schedule, v4's projection on
+v7's book with the cover 1.0 level, v6 and v7 side by side on the central path, and the empty-match replays if their
+results exist. --only-v7 adds v7 alone.
+
 Refuses to run until the protocol is frozen.
 """
 from __future__ import annotations
@@ -318,6 +323,104 @@ def v6() -> dict | None:
             "projection": v4("projection_v6.json", "capital_v6.json", "v6")}
 
 
+def book_v7(scales: dict) -> dict:
+    """v7's book in summary, as book_v6 with the premium type in place of the benefit: the level rates by entry age
+    (v5's level benefit) and the age-rated schedule, by sex and entry age, a monthly rate per rand and a fixed part for
+    each policy year."""
+    from research import book_v5 as bk
+    from research import book_v7 as bk7
+    out = book_v6(scales)
+    A, F = scales["annuities"], scales["funeral"]
+    fun = pd.read_csv(bk7.FUNERAL)
+    times = lambda d: {str(x): float(n * F) for x, n in d.items()}
+    pick = fun[fun["sum_assured"].isin([10_000, 30_000])].groupby(["sex", "premium_type"]).head(1).head(4)
+    f = out["funeral"]
+    f.pop("benefits")
+    f.update(premiums=float(fun["premium"].sum() * 12 * F), types=times(fun["premium_type"].value_counts()),
+             median_premium={t: float(g["premium"].median()) for t, g in fun.groupby("premium_type")},
+             sample=pick.to_dict("records"))
+    level = bk.rates(bk.grid())
+    level = level[level["benefit"] == "level"]
+    sched = pd.read_csv(bk7.SCHEDULE)
+    out["premium_rates"] = {s: [{"age": int(e), "level": {"per_rand": float(r["per_rand"].iloc[0]), "fixed": float(r["fixed"].iloc[0])}}
+                                for e, r in g.groupby("entry_age")] for s, g in level.groupby("sex")}
+    out["schedule"] = {s: {str(int(e)): {"per_rand": h.sort_values("policy_year")["per_rand"].round(10).tolist(),
+                                         "fixed": h.sort_values("policy_year")["fixed"].round(6).tolist()}
+                           for e, h in g.groupby("entry_age")} for s, g in sched.groupby("sex")}
+    out.pop("pricing_growth")
+    out["review"] = {"every": 5, "lapse_spike": 0.10}
+    return out
+
+
+def central_compare() -> dict | None:
+    """v6 and v7 on the central path at R400 million, year by year: own funds and their change, the capital requirement
+    and its interest charges, the funeral line's net cash flow, and IFRS 17 profit."""
+    rows = {}
+    for v in ("v6", "v7"):
+        f = OUT / f"projection_{v}.json"
+        if not f.exists():
+            return None
+        p = json.loads(f.read_text())
+        Y = p["central"]["years"]
+        net = lambda y: -(y.get("cash_flows") or {}).get("funeral", 0.0)
+        rows[v] = {"own_funds": [y["own_funds"] for y in Y], "scr": [y["scr"] for y in Y], "cover": [y["cover"] for y in Y],
+                   "nominal": [y["interest"]["nominal"] for y in Y], "real": [y["interest"]["real"] for y in Y],
+                   "market": [y["market"] for y in Y], "scr_life": [y["scr_life"] for y in Y],
+                   "bel_funeral": [y["bel"]["funeral"] for y in Y], "funeral_net": [net(y) for y in Y[1:]],
+                   "profit": p["ifrs17"]["0.1"]["profit"]}
+    return rows
+
+
+def empty_match_v7() -> dict:
+    """The read-only replays of v7's projection (research/diag_v7.py, diag_v7_split.py) counting the year-ends where the
+    whole-book match held no bonds, and the count in the projection's own log."""
+    out = {"logged": 491, "logged_capital": 0}
+    for key, name in (("main", "empty_match_v7_main.json"), ("split", "empty_match_v7_split.json")):
+        f = OUT / name
+        if f.exists():
+            out[key] = json.loads(f.read_text())
+    return out
+
+
+def v7() -> dict | None:
+    """v7 (research/PROTOCOL_v7.md): v6's sizing on the funeral book with a premium choice, the balance sheet with
+    default risk and the sovereign reverse stress, the review and lapse variants, the checks, v6 beside it, the book, v4's
+    projection on v7's book with the cover 1.0 level, the central path against v6's, and the empty-match record."""
+    f = OUT / "balance_v7.json"
+    if not f.exists():
+        return None
+    x = json.loads(f.read_text())
+    sheet = lambda r: {k: r[k] for k in ("bel", "risk_margin", "scr_life", "market", "scr", "cover", "own_funds", "life",
+                                         "interest")} | {"op": r["op"]["charge"] if isinstance(r["op"], dict) else r["op"]}
+    m = x["main"]
+    match = m["assets"]["matching"]["book"]
+    held = holdings_v6(match["units"])
+    worth = sum(v for h in held.values() for v in h.values())
+    if abs(worth / m["assets"]["matched"] - 1) > 1e-8:
+        raise SystemExit(f"holdings priced at {worth:,.0f}, not the matched {m['assets']['matched']:,.0f}")
+    c = m["credit"]
+    cover = lambda r: {k: r[k] for k in ("cover", "scr", "bel") if k in r}
+    return {"protocol": x["protocol"]["v7"], "protocol_v6": x["protocol"]["v6"], "valuation_date": x["valuation_date"],
+            **{k: x[k] for k in ("exposures", "mix", "scales", "policies", "trend")},
+            "main": sheet(m) | {"bscr": m["bscr"], "diversification": m["diversification"], "bel_parts": m["bel_parts"],
+                                "bel_by_type": m["bel_funeral_by_type"], "lapse": m["lapse"], "rate_losses": m["rate_losses"],
+                                "risk_margin_parts": m["risk_margin_parts"],
+                                "assets": {k: m["assets"][k] for k in ("total", "bill", "matched", "credit")},
+                                "holdings": held, "dv01": {"liability": match["liability"]["dv01"], "portfolio": match["portfolio_dv01"]},
+                                "credit": {k: c[k] for k in ("receivable", "cash", "outgo", "step", "factor", "type2", "type3", "default", "A")}
+                                | {"by_step": {s: v["cover"] for s, v in c["by_step"].items()}},
+                                "sovereign": m["sovereign"]},
+            "review": {k: x["review"][k] for k in ("cover", "scr", "life")},
+            "lapse_spike": {k: cover(v) for k, v in x["lapse_spike"].items()},
+            "without_default": cover(x["without_default"]),
+            "checks": {k: {"pass": v["pass"]} for k, v in x["checks"].items()},
+            "v6": {"scales": x["v6"]["scales"], "policies": x["v6"]["policies"], "mix": x["v6"]["mix"],
+                   **{k: x["v6"]["main"][k] for k in ("bel", "scr", "cover") if k in x["v6"]["main"]}},
+            "book": book_v7(x["scales"]),
+            "projection": v4("projection_v7.json", "capital_v7.json", "v7"),
+            "central_compare": central_compare(), "empty_match": empty_match_v7()}
+
+
 def e65(log_m: np.ndarray, ages: np.ndarray) -> np.ndarray:
     """Period life expectancy at 65, constant force within each year of age, Kannisto above 89."""
     ages, full = kannisto.extend(log_m, ages)
@@ -354,14 +457,16 @@ def main() -> None:
     ap.add_argument("--deaths")
     ap.add_argument("--population")
     ap.add_argument("--only-v6", action="store_true", help="add v6 to the existing data/research.json, refitting nothing")
+    ap.add_argument("--only-v7", action="store_true", help="add v7 to the existing data/research.json, refitting nothing")
     a = ap.parse_args()
     frozen = require_frozen()
-    if a.only_v6:
+    if a.only_v6 or a.only_v7:
         path = data.ROOT / "data" / "research.json"
         out = json.loads(path.read_text())
-        out["v6"] = v6()
+        key, make = ("v6", v6) if a.only_v6 else ("v7", v7)
+        out[key] = make()
         path.write_text(json.dumps(out, default=float))
-        print("added v6 to data/research.json")
+        print(f"added {key} to data/research.json")
         return
     bt = json.loads((OUT / f"backtest_{a.source}.json").read_text())
     an = json.loads((OUT / f"annuities_{a.source}.json").read_text())
@@ -392,6 +497,8 @@ def main() -> None:
         out["v4"] = b
     if (b := v6()) is not None:
         out["v6"] = b
+    if (b := v7()) is not None:
+        out["v7"] = b
     (data.ROOT / "data" / "research.json").write_text(json.dumps(out, default=float))
     print("wrote data/research.json")
 

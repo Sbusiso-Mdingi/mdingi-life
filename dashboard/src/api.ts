@@ -232,6 +232,73 @@ export type V6 = {
   projection: V4 | null;
 };
 
+export type PremiumType = "level" | "age-rated";
+export type FuneralPolicyV7 = FuneralPolicy & { premium_type: PremiumType };
+export type BookV7 = Omit<BookV6, "funeral" | "premium_rates" | "pricing_growth"> & {
+  funeral: Omit<BookV6["funeral"], "benefits" | "median_premium" | "sample"> & {
+    types: Record<PremiumType, number>;
+    median_premium: Record<PremiumType, number>;
+    sample: FuneralPolicyV7[];
+  };
+  premium_rates: Record<Sex, { age: number; level: Rate }[]>;
+  /** Age-rated rates by sex and entry age, one entry per policy year from 0. */
+  schedule: Record<Sex, Record<string, { per_rand: number[]; fixed: number[] }>>;
+  review: { every: number; lapse_spike: number };
+};
+type Small = { cover: number; scr: number; bel?: Sheet["bel"] };
+export type Central = Record<
+  "own_funds" | "scr" | "cover" | "nominal" | "real" | "market" | "scr_life" | "bel_funeral" | "funeral_net" | "profit",
+  number[]
+>;
+export type V7 = {
+  protocol: string;
+  protocol_v6: string;
+  valuation_date: string;
+  exposures: Record<"annuities" | "funeral" | "total", number>;
+  mix: number;
+  scales: Record<"annuities" | "funeral", number>;
+  policies: Record<"annuitants" | "funeral", number>;
+  trend: Record<"annuities" | "funeral" | "total", number>;
+  main: SheetV6 & {
+    bscr: number;
+    bel_parts: V3["main"]["bel_parts"];
+    bel_by_type: Record<PremiumType, number>;
+    lapse: V3["main"]["lapse"];
+    rate_losses: Record<string, number>;
+    risk_margin_parts: Record<"annuities" | "funeral", number>;
+    assets: Record<"total" | "bill" | "matched" | "credit", number>;
+    holdings: Partial<Record<"real" | "nominal", Record<string, number>>>;
+    dv01: { liability: Record<string, number>; portfolio: Record<string, number> };
+    credit: {
+      receivable: number;
+      cash: number;
+      outgo: Record<string, number>;
+      step: number;
+      factor: number;
+      type2: number;
+      type3: number;
+      default: number;
+      A: number;
+      by_step: Record<string, number>;
+    };
+    sovereign: { government_assets: number; cover_one: number; own_funds_zero: number };
+  };
+  review: { cover: number; scr: number; life: Record<string, number> };
+  lapse_spike: Record<string, Small>;
+  without_default: Small;
+  checks: Record<"F1" | "F3" | "F5" | "F6" | "D1" | "D2" | "D5", { pass: boolean }>;
+  v6: { scales: Record<"annuities" | "funeral", number>; policies: Record<"annuitants" | "funeral", number>; mix: number; bel: Sheet["bel"]; scr: number; cover: number };
+  book: BookV7;
+  projection: V4 | null;
+  central_compare: Record<"v6" | "v7", Central> | null;
+  empty_match: {
+    logged: number;
+    logged_capital: number;
+    main?: { paths: number; paths_with_empty_match: number; year_ends_empty: number; A1_all: number };
+    split?: Record<string, { paths: number; paths_with_empty_match: number; year_ends_empty: number; by_year: Record<string, number>; bel_m: { min: number; median: number; max: number; share_le_0: number } | null; A1_all: number }>;
+  };
+};
+
 export type Research = {
   source: string;
   protocol: string;
@@ -248,6 +315,7 @@ export type Research = {
   v3?: V3;
   v4?: V4 | null;
   v6?: V6 | null;
+  v7?: V7 | null;
 };
 
 export type Quote = Price & { sex: Sex; model: string; jump_off: number; lower_bound: boolean };

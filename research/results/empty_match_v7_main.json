@@ -1,0 +1,10 @@
+{
+ "paths": 1000,
+ "paths_with_empty_match": 0,
+ "year_ends_empty": 0,
+ "bel_at_empty": [],
+ "A1_all": 0.956,
+ "A1_affected": null,
+ "A1_unaffected": 0.956,
+ "examples": []
+}
