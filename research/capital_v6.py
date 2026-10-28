@@ -31,13 +31,14 @@ OUTFILE = OUT / "capital_v6.json"
 TARGET, TOL = 1.0, 1e-6
 
 
-def setup(deaths: str, population: str, cache: str | None) -> dict:
-    """capital_v4's setup on v6's book: the market, the generator, the R400 million valuation and the stresses."""
+def setup(deaths: str, population: str, cache: str | None, book=None, want: tuple | None = None) -> dict:
+    """capital_v4's setup on v6's book: the market, the generator, the R400 million valuation and the stresses.
+    v7 passes `book(grids)`, its setup of CTX and the book maker, and `want`, (its t = 0 cover, the source's name)."""
     bonds = rc.book()
     a = auctions(bonds)
     curves, bonds, days, settle = market(a)
     grids = mx.grids(deaths, population, cache)
-    s = p5.setup(grids, v6=True)
+    s = book(grids) if book else p5.setup(grids, v6=True)
     make = s["make_book"]
     fwd0 = curves["LI"]
     pv.CTX.update(s["ctx"])
@@ -48,10 +49,10 @@ def setup(deaths: str, population: str, cache: str | None) -> dict:
     sims, central = sv.paths(cal)
     book0 = pv.start(make(Basis()))
     r0 = pv.valuation(book0, fwd0, settle)
-    want = json.loads(mx.RESULT.read_text())["main"]["cover"]
-    print(f"R400m: t=0 cover {r0['cover']:.6f} (mix_v6 {want:.6f})", flush=True)
+    want, source = want or (json.loads(mx.RESULT.read_text())["main"]["cover"], "mix_v6")
+    print(f"R400m: t=0 cover {r0['cover']:.6f} ({source} {want:.6f})", flush=True)
     if abs(r0["cover"] - want) > TOL:
-        raise SystemExit(f"t = 0 cover {r0['cover']:.6f} is not mix_v6's {want:.6f}")
+        raise SystemExit(f"t = 0 cover {r0['cover']:.6f} is not {source}'s {want:.6f}")
 
     fw = lambda betas: [sv.forwards(cal, fwd0, beta) for beta in betas]
     central_curves = fw(central)

@@ -155,7 +155,10 @@ def liabilities(b: Book, cv: Curves, sc: Scenario, e: float | None = None) -> di
     inf_f, deaths = sam.project(b.mu_fun * sc.mortality, lapse, mass=sc.mass, cat=sc.cat)
     f = b.fun
     claims = f["sum_assured"].to_numpy() * (deaths @ v_mid)
-    premiums = f["premium"].to_numpy() * (inf_f @ v_nom)
+    if getattr(b, "prem", None) is None:
+        premiums = f["premium"].to_numpy() * (inf_f @ v_nom)
+    else:                                   # v7: a monthly premium for each projection year
+        premiums = (inf_f * np.repeat(b.prem, 12, axis=1)) @ v_nom
     exp_f = f["count"].to_numpy() * EXPENSE["funeral"] * (inf_f @ (exp_index * v_nom))
     if sc.mass:
         first = t < 1  # §8.5: the lapsed policies' expenses are still paid for a year

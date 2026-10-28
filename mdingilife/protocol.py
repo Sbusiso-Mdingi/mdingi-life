@@ -1,5 +1,5 @@
 """Guard: nothing that fits a model runs until its protocol (research/PROTOCOL.md for v1, PROTOCOL_v2.md for v2, PROTOCOL_v3.md for v3,
-PROTOCOL_v4.md for v4, PROTOCOL_v1.1.md for v1.1, PROTOCOL_v1.2.md for v1.2, PROTOCOL_v1.3.md for v1.3, PROTOCOL_v1.4.md for v1.4, PROTOCOL_v5.md for v5, PROTOCOL_v6.md for v6) is frozen at a commit."""
+PROTOCOL_v4.md for v4, PROTOCOL_v1.1.md for v1.1, PROTOCOL_v1.2.md for v1.2, PROTOCOL_v1.3.md for v1.3, PROTOCOL_v1.4.md for v1.4, PROTOCOL_v5.md for v5, PROTOCOL_v6.md for v6, PROTOCOL_v7.md for v7) is frozen at a commit."""
 from __future__ import annotations
 
 import re
@@ -18,6 +18,7 @@ PROTOCOL_V1_3 = ROOT / "research" / "PROTOCOL_v1.3.md"
 PROTOCOL_V1_4 = ROOT / "research" / "PROTOCOL_v1.4.md"
 PROTOCOL_V5 = ROOT / "research" / "PROTOCOL_v5.md"
 PROTOCOL_V6 = ROOT / "research" / "PROTOCOL_v6.md"
+PROTOCOL_V7 = ROOT / "research" / "PROTOCOL_v7.md"
 # the hash may be followed by a bracketed note, as in v1.4's "(27 October 2026)"
 LINE = re.compile(r"^Frozen at commit: `?([0-9a-f]{7,40})`?(?:\s+\([^)]*\))?\s*$", re.M)
 

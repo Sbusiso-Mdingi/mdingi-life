@@ -118,6 +118,9 @@ def age(b: Book, dec, ilb_rise: float, cost_rise: float) -> Book:
     n.mu_ann = {False: _shift(b.mu_ann[False], 1e3), True: longevity_rows(n)}
     n.mu_fun = _shift(b.mu_fun, 1e3)
     n.lapse = _shift(b.lapse, None)
+    if getattr(b, "prem", None) is not None:       # v7: each cell's premiums by projection year, moved a year along
+        n.prem = _shift(b.prem * wf[:, None], None)
+        f["premium"] = n.prem[:, 0]
     n.index = b.index * (1 + ilb_rise)
     n.n_ann, n.n_fun = float(a["policies"].sum()), float(f["policies"].sum())
     return n
@@ -140,6 +143,8 @@ def lapse_wave(b: Book, share: float) -> Book:
     for col in ("sum_assured", "premium", "count", "policies"):
         f[col] = f[col] * (1 - share)
     n.fun, n.n_fun = f, float(f["policies"].sum())
+    if getattr(b, "prem", None) is not None:
+        n.prem = b.prem * (1 - share)
     return n
 
 
@@ -170,7 +175,7 @@ def roll_assets(r: dict, settle, nom0: sam.Curve, nom1: sam.Curve, real1: sam.Cu
     start nominal curve, the rest valued on the year-end curves, inflation-linked ones indexed by `rise`. Also the
     holdings carried, in year-end units."""
     bonds = CTX["bonds"]
-    value = r["assets"]["bill"] / float(nom0.df(1.0))
+    value = r["assets"]["bill"] / float(nom0.df(1.0)) + r["assets"].get("credit", 0.0)   # v7's credit exposures, at par
     carried = {}
     for kind, held in r["assets"]["holdings"].items():
         end, up = (real1, 1 + rise) if kind == "real" else (nom1, 1.0)
@@ -191,7 +196,7 @@ def revalue(r: dict, settle, curves: dict) -> float:
     cfs = {code: CTX["bonds"][code].cashflows(settle) for units_ in held.values() for code in units_}
     nom, _ = Curves(CTX["fwd0"]["nominal"], CTX["fwd0"]["real"]).get(BASE)
     face = r["assets"]["bill"] / float(nom.df(BILL))
-    return asset_value(held, cfs, face, cv, BASE)
+    return asset_value(held, cfs, face, cv, BASE) + r["assets"].get("credit", 0.0)
 
 
 # --- a path --------------------------------------------------------------------------------------------------------------
