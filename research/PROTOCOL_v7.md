@@ -2,7 +2,7 @@
 
 **Written on 28 October 2026, after v6's results were seen and published.** The product, the lapses and the credit risk exposures below were settled with the user on 28 October 2026, who approved this plan the same day, with v6's results in view: in particular v6's lapse charge (R112.4 million, the largest life charge) and its nil credit risk charge. Done beforehand, and disclosed here: FSI 2.2 §8 (contract boundary), Guidance Note FSI GN 2.2 chapter 2, FSI 4.1 §4.7 to 4.8 and §9 (spread and default risk) and FSI 4.1 Attachment 4 were read, from the same copy of the standards as v3. Nothing in v7 has been run.
 
-Frozen at commit: (filled in when this is committed)
+Frozen at commit: `3fa2f70e7ae9` (28 October 2026)
 
 The question: what do the company's funeral premiums, capital and cover look like when each funeral customer chooses between a premium that is level for life and one that follows their age, reviewed every five years, and when the credit risk the company carries in its day-to-day business is counted?
 
