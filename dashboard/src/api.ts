@@ -148,7 +148,7 @@ export type Ifrs = {
   finance_result: number[];
 };
 
-export type CapitalLevel = { own_funds: number; scr: number; cover: number; share_covered: number; stresses: Record<string, number> };
+export type CapitalLevel = { own_funds: number; scr: number; cover: number; share_covered: number; below_one_by_year?: number[]; stresses: Record<string, number> };
 
 export type V4 = {
   protocol: string;
@@ -176,6 +176,62 @@ export type V4 = {
   capital?: { rule: string; levels: CapitalLevel[] } | null;
 };
 
+export type Rate = { per_rand: number; fixed: number };
+export type Benefit = "level" | "rising";
+export type FuneralPolicyV6 = FuneralPolicy & { benefit: Benefit };
+export type BookV6 = {
+  weights: Record<"annuities" | "funeral", number>;
+  drawn: Record<"annuities" | "funeral", number>;
+  annuities: Book["annuities"];
+  funeral: Omit<Book["funeral"], "median_premium" | "sample"> & { benefits: Record<Benefit, number>; median_premium: Record<Benefit, number>; sample: FuneralPolicyV6[] };
+  premium_rates: Record<Sex, ({ age: number } & Record<Benefit, Rate>)[]>;
+  sums: number[];
+  margin: number;
+  pricing_growth: number;
+  expense: number;
+};
+export type SheetV6 = Sheet & { diversification: number; interest: Sheet["interest"] & { curve: number; volatility: number } };
+export type V6 = {
+  protocol: string;
+  protocol_v5: string;
+  valuation_date: string;
+  matching: string;
+  exposures: Record<"annuities" | "funeral" | "total", number>;
+  mix: number;
+  scales: Record<"annuities" | "funeral", number>;
+  policies: Record<"annuitants" | "funeral", number>;
+  trend: Record<"annuities" | "funeral" | "total", number>;
+  large: Record<string, number>;
+  main: SheetV6 & {
+    bel_parts: V3["main"]["bel_parts"];
+    rising_claims: number;
+    lapse: V3["main"]["lapse"];
+    rate_losses: Record<string, number>;
+    vol_loss: number;
+    risk_margin_parts: Record<"annuities" | "funeral", number>;
+    breakeven: number;
+    capital_for: Record<string, number>;
+    assets: Record<"total" | "bill" | "matched", number>;
+    holdings: Partial<Record<"real" | "nominal", Record<string, number>>>;
+    dv01: { liability: Record<string, number>; portfolio: Record<string, number> };
+  };
+  v5_matching: SheetV6;
+  unmatched: SheetV6;
+  sensitivities: Record<string, SheetV6>;
+  checks: {
+    D1: { relative: number; pass: boolean };
+    D2: { cover: number; pass: boolean };
+    D3: { worst: number; pass: boolean };
+    D5: { relative: number; lowest_units: number; pass: boolean };
+    C4: { pass: boolean };
+    C5: { pass: boolean };
+    C6: { pass: boolean };
+  };
+  v5: { bel: Sheet["bel"]; scr: number; risk_margin: number; cover: number; own_funds: number; policies: Record<"annuities" | "funeral", number> };
+  book: BookV6;
+  projection: V4 | null;
+};
+
 export type Research = {
   source: string;
   protocol: string;
@@ -191,6 +247,7 @@ export type Research = {
   v2?: V2;
   v3?: V3;
   v4?: V4 | null;
+  v6?: V6 | null;
 };
 
 export type Quote = Price & { sex: Sex; model: string; jump_off: number; lower_bound: boolean };

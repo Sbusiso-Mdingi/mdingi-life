@@ -19,6 +19,12 @@ If projection_v4.json exists it bundles v4: the scenario generator's parameters 
 scenarios, the central path's balance sheets and IFRS 17 results, the named stresses, the sensitivities and the checks.
 If capital_v4.json exists too, it adds the starting-capital levels, with v4's own R400 million run as the first.
 
+If mix_v6.json exists it bundles v6: the mix and size, the balance sheet with the whole book matched (holdings priced on
+the valuation date's curves, checked against the matched value), the variants and checks, v5's result on the old counts,
+the book at v6's scales with the v5 premium rates by benefit, and v4's projection on v6's book (projection_v6.json) with
+the cover 1.0 level (capital_v6.json). With --only-v6, v6 is added to the existing data/research.json and nothing is
+refitted.
+
 Refuses to run until the protocol is frozen.
 """
 from __future__ import annotations
@@ -176,8 +182,8 @@ def v3() -> dict | None:
             "key_rate": key}
 
 
-def v4() -> dict | None:
-    f = OUT / "projection_v4.json"
+def v4(name: str = "projection_v4.json", levels: str = "capital_v4.json", protocol: str = "v4") -> dict | None:
+    f = OUT / name
     if not f.exists():
         return None
     p = json.loads(f.read_text())
@@ -197,7 +203,7 @@ def v4() -> dict | None:
     stress_ifrs = {n: {k: v[k] for k in ("csm", "profit", "service_result", "csm_used", "losses", "loss_t0",
                                          "fs_change_t0", "fs_change_t1", "experience_t1")} for n, v in p["stresses_ifrs17"].items()}
     return {
-        "protocol": p["protocol"]["v4"], "valuation_date": p["valuation_date"],
+        "protocol": p["protocol"][protocol], "valuation_date": p["valuation_date"],
         "esg": {**{k: esg[k] for k in keep}, "ten_year": esg["ten_year"], "history": hist, "checks": esg["checks"],
                 "frozen_three_factor": {**{k: frozen3[k] for k in keep}, "checks": frozen3["checks"],
                                         "cover": frozen3["cover"]},
@@ -211,23 +217,105 @@ def v4() -> dict | None:
         "ifrs17": ifrs, "transition": p["transition"],
         "sensitivities": p["sensitivities"],
         "checks": p["checks"],
-        "capital": capital(p),
+        "capital": capital(p, levels),
     }
 
 
-def capital(p: dict) -> dict | None:
-    """The starting-capital levels: v4's R400 million run, then each level in capital_v4.json, by own funds."""
-    f = OUT / "capital_v4.json"
+def capital(p: dict, name: str = "capital_v4.json") -> dict | None:
+    """The starting-capital levels: the projection's own R400 million run, then each level in `name`, by own funds."""
+    f = OUT / name
     if not f.exists():
         return None
     c = json.loads(f.read_text())
-    row = lambda funds, scr, cover, share, stresses: {"own_funds": funds, "scr": scr, "cover": cover,
-                                                      "share_covered": share, "stresses": stresses}
-    rows = [row(p["t0"]["own_funds"], p["t0"]["scr"], p["t0"]["cover"], p["scenarios"]["A1"]["share_covered"],
+    row = lambda funds, scr, cover, sc, stresses: {"own_funds": funds, "scr": scr, "cover": cover,
+                                                   "share_covered": sc["A1"]["share_covered"],
+                                                   "below_one_by_year": sc["below_one_by_year"], "stresses": stresses}
+    rows = [row(p["t0"]["own_funds"], p["t0"]["scr"], p["t0"]["cover"], p["scenarios"],
                 {n: min(v["cover"]) for n, v in p["stresses"].items()})]
-    rows += [row(v["own_funds"], v["scr"], v["cover"], v["scenarios"]["A1"]["share_covered"],
+    rows += [row(v["own_funds"], v["scr"], v["cover"], v["scenarios"],
                  {n: s["lowest"] for n, s in v["stresses"].items()}) for v in c["levels"].values()]
     return {"rule": c["rule"], "levels": sorted(rows, key=lambda x: x["own_funds"])}
+
+
+def book_v6(scales: dict) -> dict:
+    """v6's book in summary: v5's policies, each line's counts, incomes, sums assured and premiums times its scale (so
+    every drawn policy stands for that many), a few policies from it, and the monthly funeral premium by sex, entry
+    age and benefit on the v5 table."""
+    from research import book_v5 as bk
+    A, F = scales["annuities"], scales["funeral"]
+    ann, fun = pd.read_csv(BOOK / "annuities.csv"), pd.read_csv(bk.FUNERAL)
+    times = lambda d, k: {str(x): float(n * k) for x, n in d.items()}
+    band = lambda a, k: (lambda b: {"from": b["from"], "n": [n * k for n in b["n"]]})(ages(a))
+    rates = {}
+    for s, g in bk.rates(bk.grid()).groupby("sex"):
+        rates[s] = [{"age": int(e), **{bt: {"per_rand": float(r["per_rand"]), "fixed": float(r["fixed"])}
+                                       for bt, r in h.set_index("benefit").iterrows()}} for e, h in g.groupby("entry_age")]
+    pick = lambda df, by: df.groupby(by).head(1).head(4).to_dict("records")
+    return {"weights": {"annuities": A, "funeral": F}, "drawn": {"annuities": len(ann), "funeral": len(fun)},
+            "annuities": {"n": len(ann) * A, "income": float(ann["income"].sum() * A),
+                          "median_income": float(ann["income"].median()), "types": times(ann["type"].value_counts(), A),
+                          "sexes": times(ann["sex"].value_counts(), A), "ages": band(ann["age"], A),
+                          "median_age": float(ann["age"].median()), "sample": pick(ann, ["sex", "type"])},
+            "funeral": {"n": len(fun) * F, "cover": float(fun["sum_assured"].sum() * F),
+                        "premiums": float(fun["premium"].sum() * 12 * F),
+                        "sums": {str(int(k)): float(v * F) for k, v in fun["sum_assured"].value_counts().sort_index().items()},
+                        "benefits": times(fun["benefit"].value_counts(), F), "sexes": times(fun["sex"].value_counts(), F),
+                        "ages": band(fun["age"], F), "median_age": float(fun["age"].median()),
+                        "median_premium": {bt: float(g["premium"].median()) for bt, g in fun.groupby("benefit")},
+                        "sample": pick(fun[fun["sum_assured"].isin([10_000, 30_000])], ["sex", "benefit"])},
+            "premium_rates": rates, "sums": sorted(int(x) for x in fun["sum_assured"].unique()),
+            "margin": bk.b3.PRICING["margin"], "pricing_growth": bk.PRICING_GROWTH,
+            "expense": bk.b3.EXPENSE["funeral"]}
+
+
+def holdings_v6(units: dict) -> dict:
+    """The whole-book match's holdings by value, each bond priced on the valuation date's curves as the match was."""
+    from research import balance_v3 as b3
+    from research import balance_v5 as b5
+    curves, bonds, _, settle = b3.market()
+    cv = b3.Curves(curves[b3.Basis().curve]["nominal"], curves[b3.Basis().curve]["real"])
+    out = {}
+    for kind, u in units.items():
+        book = b5.bond_book(bonds, settle, kind)
+        out[kind] = {c: n * b5.bond_value(*book[c], cv.fwd[kind]) for c, n in u.items()}
+    return out
+
+
+def v6() -> dict | None:
+    """v6 (research/PROTOCOL_v6.md): the mix and size, the balance sheet with the whole book matched, the variants,
+    the checks, v5's result on the old counts beside it, the book, and v4's projection on v6's book with the two
+    capital levels."""
+    f = OUT / "mix_v6.json"
+    if not f.exists():
+        return None
+    x = json.loads(f.read_text())
+    sheet = lambda r: {k: r[k] for k in ("bel", "risk_margin", "scr_life", "market", "bscr", "scr", "cover", "own_funds",
+                                         "life", "interest", "inflation", "diversification")} | {"op": r["op"]["charge"]}
+    m = x["main"]
+    match = m["assets"]["matching"]["book"]
+    held = holdings_v6(match["units"])
+    worth = sum(v for h in held.values() for v in h.values())
+    if abs(worth / m["assets"]["matched"] - 1) > 1e-8:
+        raise SystemExit(f"holdings priced at {worth:,.0f}, not the matched {m['assets']['matched']:,.0f}")
+    v5 = json.loads((OUT / "balance_v5.json").read_text())["main"]
+    c = x["checks"]
+    return {"protocol": x["protocol"]["v6"], "protocol_v5": x["protocol"]["v5"], "valuation_date": x["valuation_date"],
+            "matching": x["matching"],
+            **{k: x[k] for k in ("exposures", "mix", "scales", "policies", "trend", "large")},
+            "main": sheet(m) | {"bel_parts": m["bel_parts"], "rising_claims": m["rising_claims"], "lapse": m["lapse"],
+                                "rate_losses": m["rate_losses"], "vol_loss": m["vol_loss"],
+                                "risk_margin_parts": m["risk_margin_parts"], "breakeven": m["f"],
+                                "capital_for": m["capital_for"],
+                                "assets": {k: m["assets"][k] for k in ("total", "bill", "matched")},
+                                "holdings": held, "dv01": {"liability": match["liability"]["dv01"],
+                                                           "portfolio": match["portfolio_dv01"]}},
+            "v5_matching": sheet(x["other_matching"]), "unmatched": sheet(x["unmatched"]),
+            "sensitivities": {k: sheet(r) for k, r in x["sensitivities"].items()},
+            "checks": {"D1": c["D1"], "D2": c["D2"], "D3": {"pass": c["D3"]["pass"], "worst": max(c["D3"]["relative"].values())},
+                       "D5": c["D5"], **{k: {"pass": c[k]["pass"]} for k in ("C4", "C5", "C6")}},
+            "v5": {k: v5[k] for k in ("bel", "scr", "risk_margin", "cover", "own_funds")} | {"policies": {"annuities": 5000, "funeral": 50000}},
+            "book": book_v6(x["scales"]),
+            "projection": v4("projection_v6.json", "capital_v6.json", "v6")}
 
 
 def e65(log_m: np.ndarray, ages: np.ndarray) -> np.ndarray:
@@ -265,8 +353,16 @@ def main() -> None:
     ap.add_argument("--source", default="wpp", choices=["wpp", "statssa"])
     ap.add_argument("--deaths")
     ap.add_argument("--population")
+    ap.add_argument("--only-v6", action="store_true", help="add v6 to the existing data/research.json, refitting nothing")
     a = ap.parse_args()
     frozen = require_frozen()
+    if a.only_v6:
+        path = data.ROOT / "data" / "research.json"
+        out = json.loads(path.read_text())
+        out["v6"] = v6()
+        path.write_text(json.dumps(out, default=float))
+        print("added v6 to data/research.json")
+        return
     bt = json.loads((OUT / f"backtest_{a.source}.json").read_text())
     an = json.loads((OUT / f"annuities_{a.source}.json").read_text())
     paths = {"deaths": a.deaths, "population": a.population} if a.source == "statssa" else {}
@@ -294,6 +390,8 @@ def main() -> None:
         out["v3"] = b
     if (b := v4()) is not None:
         out["v4"] = b
+    if (b := v6()) is not None:
+        out["v6"] = b
     (data.ROOT / "data" / "research.json").write_text(json.dumps(out, default=float))
     print("wrote data/research.json")
 

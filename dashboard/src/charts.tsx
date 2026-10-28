@@ -316,20 +316,22 @@ export function BarChart({ label, groups, fmt, height = 240 }: { label: string; 
   const H = height;
   const [hover, setHover] = useState<string | null>(null);
   const hi = Math.max(...groups.flatMap((g) => g.values.map((v) => v.value)), 0);
-  const yt = niceTicks(0, hi, 4);
+  const lo = Math.min(...groups.flatMap((g) => g.values.map((v) => v.value)), 0);
+  const yt = niceTicks(lo, hi, 4);
   // Room for the longest tick label at 11px (about 6.5px a character), and the 8px gap to the axis
   const pad = { l: Math.max(44, Math.ceil(6.5 * Math.max(...yt.map((t) => fmt(t).length)) + 12)), r: 14, t: 12, b: 28 };
-  const y = scaleLinear(0, Math.max(hi, yt[yt.length - 1]), H - pad.b, pad.t);
+  const y = scaleLinear(Math.min(lo, yt[0]), Math.max(hi, yt[yt.length - 1]), H - pad.b, pad.t);
   const slot = (W - pad.l - pad.r) / groups.length;
   const per = groups[0]?.values.length ?? 1;
   const bw = Math.min(36, (slot * 0.6 - 2 * (per - 1)) / per);
   // On narrow screens, label every second (or third) group when the labels would collide
   const every = Math.ceil((6.5 * Math.max(...groups.map((g) => g.label.length)) + 6) / slot);
+  // Anchored at zero, rounded at the data end: the top for positive values, the bottom for negative ones
   const bar = (x0: number, v: number) => {
-    const top = y(v);
-    const h = y(0) - top;
-    const r = Math.min(4, h, bw / 2);
-    return `M${x0} ${y(0)}V${top + r}Q${x0} ${top} ${x0 + r} ${top}H${x0 + bw - r}Q${x0 + bw} ${top} ${x0 + bw} ${top + r}V${y(0)}Z`;
+    const end = y(v);
+    const s = v > 0 ? 1 : -1;
+    const r = Math.min(4, Math.abs(y(0) - end), bw / 2);
+    return `M${x0} ${y(0)}V${end + s * r}Q${x0} ${end} ${x0 + r} ${end}H${x0 + bw - r}Q${x0 + bw} ${end} ${x0 + bw} ${end + s * r}V${y(0)}Z`;
   };
   const tipW = 200;
   return (
@@ -357,7 +359,7 @@ export function BarChart({ label, groups, fmt, height = 240 }: { label: string; 
           >
             <rect x={cx - slot / 2} y={pad.t} width={slot} height={H - pad.b - pad.t} fill={lit ? "var(--foreground)" : "transparent"} opacity={lit ? 0.05 : 1} />
             {g.values.map((v, j) =>
-              v.value > 0 ? (
+              v.value !== 0 ? (
                 <path key={v.key} d={bar(x0 + j * (bw + 2), v.value)} fill={v.color} />
               ) : (
                 <path key={v.key} d={`M${x0 + j * (bw + 2)} ${y(0) - 1}h${bw}`} stroke={v.color} strokeWidth="2" />

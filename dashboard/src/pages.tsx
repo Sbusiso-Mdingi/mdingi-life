@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from "react";
-import type { Book, Pct, Research, Sex, V3 } from "./api";
+import type { Benefit, Book, Pct, Research, Sex } from "./api";
 import { BarChart, IntervalChart, YearChart, type BarGroup, type Interval } from "./charts";
 import { BalanceSheet, Backtest, CurveBacktest, CurvePanel, CurvePrices, FanPanel, History, Interest, Matching, Sensitivity, Sources } from "./detail";
 import { SEX_LABEL, num, pct, thousands } from "./format";
@@ -15,7 +15,6 @@ const cents = (v: number) => `R${v.toFixed(2)}`;
 const coverPct = (c: number) => `${Math.round(c * 100)}%`;
 const PERSON: Record<Sex, string> = { Male: "Man", Female: "Woman" };
 const doc = (f: string) => `${REPO}/blob/main/research/${f}`;
-const MARGIN = 0.2; // the funeral pricing basis, research/book_v3.py
 
 /** The caveat on every 95% range from the mortality forecast: the backtest found them too narrow. */
 export function LowerBound() {
@@ -90,8 +89,6 @@ function HBars({ rows, max, marker, markerLabel }: { rows: Bar[]; max?: number; 
   );
 }
 
-const current = (v: V3) => v.key_rate ?? v.main;
-
 // Overview ----------------------------------------------------------------------------------------------------------
 
 /** The disclaimer, kept above the fold on the pages people land on. */
@@ -103,10 +100,6 @@ function Fiction() {
     </p>
   );
 }
-
-/** The first starting capital at which 95% of futures stay covered every year, if any level reached it. */
-/** Industry-typical starting capital, about 1.8 times the SCR: a reference point shown beside the 95% crossing. */
-const REFERENCE = 627e6;
 
 type Levels = NonNullable<NonNullable<Research["v4"]>["capital"]>["levels"];
 
@@ -122,110 +115,110 @@ export const crossing = (r: Research) => levelsAround(r.v4?.capital?.levels ?? [
 type Finding = { key: string; figure: string; pill?: ReactNode; text: ReactNode; tab?: Tab };
 
 export function Overview({ r, go }: { r: Research; go: Go }) {
-  const v = r.v3!;
-  const b = v.book!;
-  const now = current(v);
-  const k = v.key_rate;
+  const v = r.v6!;
+  const b = v.book;
   const m = v.main;
-  const v4 = r.v4;
+  const p = v.projection;
   const pension = r.v2 ? v2find(r.v2, "Female", 65, 0.7)["inflation-linked LI"].median * 120_000 : null;
-  const real = k ? Object.values(k.holdings.real).reduce((a, x) => a + x, 0) : m.matching.real.liability.value;
-  const fixed = k ? Object.values(k.holdings.nominal).reduce((a, x) => a + x, 0) : m.matching.nominal.liability.value;
-  const bonds = k ? Object.keys(k.holdings.real).length + Object.keys(k.holdings.nominal).length : 4;
-  const minPremium = Math.min(...SEXES.flatMap((s) => b.premium_rates[s].map((p) => p.per_rand * b.sums[0] + p.fixed)));
+  const held = (k: "real" | "nominal") => Object.values(m.holdings[k] ?? {}).reduce((a, x) => a + x, 0);
+  const minPremium = Math.min(...SEXES.flatMap((s) => b.premium_rates[s].map((x) => x.level.per_rand * b.sums[0] + x.level.fixed)));
   const own = [
-    { key: "ilb", label: "Inflation-linked government bonds", value: real, color: "var(--s1)" },
-    { key: "fixed", label: "Fixed-rate government bonds", value: fixed, color: "var(--s2)" },
+    { key: "ilb", label: "Inflation-linked government bonds", value: held("real"), color: "var(--s1)" },
+    { key: "fixed", label: "Fixed-rate government bonds", value: held("nominal"), color: "var(--s2)" },
     { key: "bill", label: "Treasury bill (cash)", value: m.assets.bill, color: "#8a968f" },
-  ];
+  ].filter((x) => x.value > 0);
   const owe = [
-    { key: "bel", label: "Owed to customers (best estimate)", value: now.bel.total, color: "var(--s3)" },
-    { key: "rm", label: "Risk margin", value: now.risk_margin, color: "var(--gold)" },
-    { key: "own", label: "Own capital", value: now.own_funds, color: "var(--primary-strong)" },
+    { key: "bel", label: "Owed to customers (best estimate)", value: m.bel.total, color: "var(--s3)" },
+    { key: "rm", label: "Risk margin", value: m.risk_margin, color: "var(--gold)" },
+    { key: "own", label: "Own capital", value: m.own_funds, color: "var(--primary-strong)" },
   ];
   const total = m.assets.total;
   const p3 = r.backtest.tests.P3;
-  const longevity = v4?.stresses["S2 Longevity"];
-  const cross = crossing(r);
-  const levels = v4?.capital?.levels ?? [];
-  const top = levels[levels.length - 1];
+  const perPensioner = v.policies.funeral / v.policies.annuitants;
+  const onePct = 0.01 * v.scales.annuities * Math.abs(v.exposures.annuities);
+  const floor = p?.capital?.levels.find((x) => x.cover < 1.5);
+  const biggest = (Object.entries(m.life) as [string, number][]).sort((a, b) => b[1] - a[1])[0];
   const findings: Finding[] = [
     {
-      key: "today",
-      figure: coverPct(now.cover),
-      pill: now.cover >= 1 ? <Pill kind="good">Above 100%</Pill> : <Pill kind="bad">Below 100%</Pill>,
+      key: "mix",
+      figure: `${Math.round(perPensioner)} to 1`,
+      pill: <Pill kind="good">Set by rule</Pill>,
       text: (
         <>
-          Solvency cover today, on {randM(now.own_funds)} of capital. My first choice of bonds gave {coverPct(m.cover)}, short of the regulator's 100%;
-          spreading the same money across {bonds} bonds of 5 to 30 years cut the interest-rate charge from {randM(m.market)} to {randM(now.market)}.
+          funeral policies to each pensioner. At that mix, a mistake in death rates cancels out: if everyone's death rates were 1% higher, the pensions would
+          cost {randM(onePct, 1)} less and the funeral claims {randM(onePct, 1)} more. It cancels a mistake in the level, not the trend: improvement 1 point a
+          year faster would still cost {randM(v.trend.total, 1)}.
+        </>
+      ),
+      tab: "customers",
+    },
+    {
+      key: "today",
+      figure: coverPct(m.cover),
+      pill: <Pill kind="good">Industry median</Pill>,
+      text: (
+        <>
+          solvency cover on {randM(m.own_funds)} of capital, by design: I scaled the whole book until cover matched the median South African life insurer's.
+          Investing for both lines together is what lets it be this big. With the pensions matched on their own, the same book would sit at{" "}
+          {coverPct(v.v5_matching.cover)}.
         </>
       ),
       tab: "capital",
     },
-    ...(v4
+    ...(p
       ? [
           {
             key: "five",
-            figure: pct(v4.scenarios.A1.share_covered, 0),
-            pill: v4.scenarios.A1.pass ? <Pill kind="good">Meets the 95% target</Pill> : <Pill kind="bad">Misses the 95% target</Pill>,
+            figure: pct(p.scenarios.A1.share_covered, 1),
+            pill: p.scenarios.A1.pass ? <Pill kind="good">Meets the 95% target</Pill> : <Pill kind="bad">Misses the 95% target</Pill>,
             text: (
               <>
-                of 1,000 simulated five-year futures keep cover above 100% at every year-end. I set the target at 95% before running them. The bonds
-                hedge what is owed to customers, not the regulator's add-ons, so a fall in rates still hurts.
+                of 1,000 simulated five-year futures keep cover above 100% at every year-end, against a 95% target I set before running them. On the earlier
+                book of invented counts it was {r.v4 ? pct(r.v4.scenarios.A1.share_covered, 0) : "lower"}.
               </>
             ),
             tab: "future" as Tab,
           },
-          ...(longevity
-            ? [
-                {
-                  key: "longevity",
-                  figure: coverPct(Math.min(...longevity.cover)),
-                  pill: <Pill kind="bad">Needs {randM(longevity.capital_to_restore)}</Pill>,
-                  text: (
-                    <>
-                      is where cover falls if pensioners' death rates are 20% lower for good. Longevity is the company's biggest risk by far, and the one
-                      disaster it cannot ride out without new capital.
-                    </>
-                  ),
-                  tab: "future" as Tab,
-                },
-              ]
-            : []),
-          ...(levels.length > 1
-            ? [
-                {
-                  key: "capital",
-                  figure: cross ? `${randM(cross.lo.own_funds)} to ${randM(cross.hi.own_funds)}` : `> ${randM(top.own_funds)}`,
-                  pill: <Pill kind="warn">Exploratory</Pill>,
-                  text: cross ? (
-                    <>
-                      of starting capital, instead of {randM(levels[0].own_funds)}, is where the share of futures staying covered every year crosses 95%:{" "}
-                      {pct(cross.lo.share_covered, 1)} at {randM(cross.lo.own_funds)}, {pct(cross.hi.share_covered, 1)} at {randM(cross.hi.own_funds)}. Even at{" "}
-                      {randM(cross.hi.own_funds)}, longer-living pensioners take cover to {coverPct(cross.hi.stresses["S2 Longevity"])}. I added these runs
-                      after seeing the first result. They are final, on the original mortality model (v1).
-                    </>
-                  ) : (
-                    <>
-                      of starting capital would be needed for 95% of futures to stay covered: at {randM(top.own_funds)}, {pct(top.share_covered, 0)} do. I
-                      stopped the range there, as planned.
-                    </>
-                  ),
-                  tab: "future" as Tab,
-                },
-              ]
-            : []),
         ]
       : []),
+    ...(floor
+      ? [
+          {
+            key: "floor",
+            figure: pct(floor.share_covered, 1),
+            pill: <Pill kind="bad">At the minimum, misses</Pill>,
+            text: (
+              <>
+                is the share of futures that stay covered if the company starts at exactly 100%, on {randM(floor.own_funds, 1)} of capital. {pct(1 - floor.share_covered, 0)} dip
+                below at some point, most often in the first year ({pct(floor.below_one_by_year?.[1] ?? 0, 0)} of futures).
+              </>
+            ),
+            tab: "future" as Tab,
+          },
+        ]
+      : []),
+    {
+      key: "lapse",
+      figure: randM(biggest[1]),
+      pill: <Pill kind="warn">Largest risk</Pill>,
+      text: (
+        <>
+          is the charge for {biggest[0] === "lapse" ? "funeral customers leaving" : biggest[0]}, the biggest single risk. The funeral policies are expected to
+          earn {randM(-m.bel.funeral)}, and a wave of cancellations would lose much of it. Longevity, the biggest risk when the book was mostly pensions, is{" "}
+          {randM(m.life.longevity)}.
+        </>
+      ),
+      tab: "capital",
+    },
     {
       key: "ranges",
       figure: "Ranges too narrow",
       pill: p3.Male && p3.Female ? <Pill kind="good">Backtest passed</Pill> : <Pill kind="bad">Backtest failed</Pill>,
       text: (
         <>
-          The mortality forecast's 95% ranges caught fewer than 90% of the death rates that actually happened in the backtest
-          {p3.Male !== p3.Female ? ` for ${p3.Male ? "women" : "men"}` : ", for men and women"}, so every pension range on this site, all from the original mortality model (v1), is a lower
-          bound on the real uncertainty.
+          The pension mortality forecast's 95% ranges caught fewer than 90% of the death rates that actually happened in the backtest
+          {p3.Male !== p3.Female ? ` for ${p3.Male ? "women" : "men"}` : ", for men and women"}, so every pension range on this site, all from the original
+          mortality model (v1), is a lower bound on the real uncertainty.
         </>
       ),
       tab: "built",
@@ -237,9 +230,9 @@ export function Overview({ r, go }: { r: Research; go: Go }) {
         <p className="kicker">A portfolio project by Sbusiso Mdingi</p>
         <h1>I built a model South African life insurer to see whether it could keep its promises.</h1>
         <p>
-          It pays pensions to {thousands(b.annuities.n)} retirees and covers {thousands(b.funeral.n)} families' funerals. I priced them on Stats SA death
-          records, invested the money on National Treasury bond auctions, tested the capital against the Prudential Authority's rules, and projected it
-          five years ahead.
+          It pays pensions to {thousands(Math.round(b.annuities.n))} retirees and covers {thousands(Math.round(b.funeral.n))} families' funerals, a mix I set
+          so that their risks offset. I priced them on Stats SA death records, invested the money on National Treasury bond auctions, tested the capital
+          against the Prudential Authority's rules, and projected it five years ahead.
         </p>
         <Fiction />
         <div className="actions">
@@ -254,7 +247,9 @@ export function Overview({ r, go }: { r: Research; go: Go }) {
 
       <section className="section">
         <h2>What it shows</h2>
-        <p className="sub">The main results on one screen. Each was measured against a pass mark I wrote down before running it, except the capital levels, which I added afterwards.</p>
+        <p className="sub">
+          The main results on one screen. The mix and size were set by rules, and each test was measured against a pass mark I wrote down before running it.
+        </p>
         <div className="card">
           <ul className="findings">
             {findings.map((f) => (
@@ -277,10 +272,10 @@ export function Overview({ r, go }: { r: Research; go: Go }) {
       </section>
 
       <div className="grid four kpis">
-        <Stat label="Pensions paid each year" value={randM(b.annuities.income)} sub={`To ${thousands(b.annuities.n)} retirees, median age ${Math.round(b.annuities.median_age)}`} />
-        <Stat label="Funeral cover in force" value={b.funeral.cover >= 1e9 ? randBn(b.funeral.cover) : randM(b.funeral.cover)} sub={`${thousands(b.funeral.n)} policies, from ${cents(minPremium)} a month`} />
-        <Stat label="Total assets" value={randBn(total)} sub={`${randBn(now.bel.total)} of it is owed to customers; the rest backs the risk margin and own capital`} />
-        <Stat label="Solvency cover" value={coverPct(now.cover)} good={now.cover >= 1} sub={`${randM(now.own_funds)} of capital against ${randM(now.scr)} required`} />
+        <Stat label="Pensions paid each year" value={randM(b.annuities.income, 1)} sub={`To ${thousands(Math.round(b.annuities.n))} retirees, median age ${Math.round(b.annuities.median_age)}`} />
+        <Stat label="Funeral cover in force" value={b.funeral.cover >= 1e9 ? randBn(b.funeral.cover) : randM(b.funeral.cover)} sub={`${thousands(Math.round(b.funeral.n))} policies, from ${cents(minPremium)} a month`} />
+        <Stat label="Total assets" value={randM(total)} sub={`${randM(m.bel.total)} of it is owed to customers; the rest backs the risk margin and own capital`} />
+        <Stat label="Solvency cover" value={coverPct(m.cover)} good={m.cover >= 1} sub={`${randM(m.own_funds)} of capital against ${randM(m.scr)} required`} />
       </div>
 
       <section className="section">
@@ -288,9 +283,10 @@ export function Overview({ r, go }: { r: Research; go: Go }) {
         <div className="steps">
           <div className="card step">
             <span className="num-badge">1</span>
-            <h3>Pricing the pensions</h3>
+            <h3>Pricing the cover</h3>
             <p>
-              I forecast how long people live from 26 years of Stats SA death records, on the original mortality model (v1), with ranges from simulated futures.
+              I forecast how long pensioners live from 26 years of Stats SA death records, on the original mortality model (v1), and priced funeral cover on
+              death rates to 2024 that keep improving.
               {pension && " A woman of 65 who wants R10,000 a month for life, rising with inflation, would pay once:"}
             </p>
             {pension && <div className="figure">{randFull(Math.round(pension / 100) * 100)}</div>}
@@ -302,10 +298,10 @@ export function Overview({ r, go }: { r: Research; go: Go }) {
             <span className="num-badge">2</span>
             <h3>Investing the money</h3>
             <p>
-              Pensions are paid for decades, so the money sits in government bonds that pay back over the same years, priced on yield curves I fitted to the
-              Treasury's auctions.
+              The pensions and the funeral business are invested for together. The funeral profits offset much of the pensions' interest-rate risk, so one
+              long inflation-linked bond covers what is owed, and the rest is in Treasury bills.
             </p>
-            <div className="figure">{randBn(total)}</div>
+            <div className="figure">{randM(total)}</div>
             <button className="link" onClick={() => go("investments")}>
               See the holdings →
             </button>
@@ -314,19 +310,20 @@ export function Overview({ r, go }: { r: Research; go: Go }) {
             <span className="num-badge">3</span>
             <h3>Testing the capital</h3>
             <p>
-              The regulator's standard formula asks whether the company could still pay everyone after a 1-in-200 year. With rebalanced bonds, cover is:
+              The regulator's standard formula asks whether the company could still pay everyone after a 1-in-200 year. I sized the book so that cover is the
+              industry median:
             </p>
-            <div className="figure">{coverPct(now.cover)}</div>
+            <div className="figure">{coverPct(m.cover)}</div>
             <button className="link" onClick={() => go("capital")}>
               What it holds capital against →
             </button>
           </div>
-          {v4 && (
+          {p && (
             <div className="card step">
               <span className="num-badge">4</span>
               <h3>Looking five years ahead</h3>
               <p>A thousand simulated paths for interest rates and inflation, and five named disasters. Futures that stay above 100% every year:</p>
-              <div className="figure">{pct(v4.scenarios.A1.share_covered, 0)}</div>
+              <div className="figure">{pct(p.scenarios.A1.share_covered, 1)}</div>
               <button className="link" onClick={() => go("future")}>
                 The five-year view →
               </button>
@@ -338,7 +335,7 @@ export function Overview({ r, go }: { r: Research; go: Go }) {
       <section className="section">
         <h2>The balance sheet in one picture</h2>
         <p className="sub">
-          What the company owns, and who it is for, on {longDate(v.valuation_date)}. Both sides add up to {randBn(total)}.
+          What the company owns, and who it is for, on {longDate(v.valuation_date)}. Both sides add up to {randM(total)}.
         </p>
         <div className="card">
           {[
@@ -347,28 +344,29 @@ export function Overview({ r, go }: { r: Research; go: Go }) {
           ].map((row) => (
             <div className="stack-row" key={row.who}>
               <span className="who">{row.who}</span>
-              <div className="stack" role="img" aria-label={`${row.who}: ${row.parts.map((p) => `${p.label} ${randM(p.value)}`).join(", ")}`}>
-                {row.parts.map((p) => (
-                  <div key={p.key} style={{ flex: p.value, background: p.color }} title={`${p.label}: ${randM(p.value)}`}>
-                    {p.value / total > 0.12 ? randM(p.value) : ""}
+              <div className="stack" role="img" aria-label={`${row.who}: ${row.parts.map((x) => `${x.label} ${randM(x.value)}`).join(", ")}`}>
+                {row.parts.map((x) => (
+                  <div key={x.key} style={{ flex: x.value, background: x.color }} title={`${x.label}: ${randM(x.value)}`}>
+                    {x.value / total > 0.12 ? randM(x.value) : ""}
                   </div>
                 ))}
               </div>
             </div>
           ))}
           <div className="keylist">
-            {[...own, ...owe].map((p) => (
-              <span key={p.key}>
-                <i style={{ background: p.color }} />
-                {p.label} <b>{randM(p.value)}</b>
+            {[...own, ...owe].map((x) => (
+              <span key={x.key}>
+                <i style={{ background: x.color }} />
+                {x.label} <b>{randM(x.value)}</b>
               </span>
             ))}
           </div>
           <div className="callout">
-            <strong>Why the funeral business shows up as a plus</strong>
-            Funeral customers are expected to pay {randM(m.bel_parts.premiums)} in future premiums, against {randM(m.bel_parts.claims)} of claims and{" "}
-            {randM(m.bel_parts.fun_expenses)} of running costs. The {randM(-m.bel.funeral)} difference is netted off what the pensions are owed. The risk margin
-            is what another insurer would charge to take the book over; own capital is the cushion above that.
+            <strong>Why so little is owed to customers</strong>
+            The pensions are owed {randM(m.bel.annuities)}. Funeral customers are expected to pay {randM(m.bel_parts.premiums)} in future premiums, against{" "}
+            {randM(m.bel_parts.claims)} of claims and {randM(m.bel_parts.fun_expenses)} of running costs, and the {randM(-m.bel.funeral)} difference is netted
+            off what the pensions are owed, leaving {randM(m.bel.total)}. The risk margin is what another insurer would charge to take the book over; own capital
+            is the cushion above that.
           </div>
         </div>
       </section>
@@ -383,7 +381,7 @@ const PRICED_ON: Record<Sex, string> = { Male: "original mortality model (v1)", 
 
 export function Quote({ r }: { r: Research }) {
   const v2 = r.v2!;
-  const book = r.v3!.book!;
+  const book = r.v6!.book;
   const [sex, setSex] = useState<Sex>("Female");
   const [age, setAge] = useState(65);
   const [kind, setKind] = useState<"inflation-linked" | "level">("inflation-linked");
@@ -394,7 +392,9 @@ export function Quote({ r }: { r: Research }) {
   const [fsex, setFsex] = useState<Sex>("Female");
   const [fage, setFage] = useState(35);
   const [sum, setSum] = useState(book.sums[1] ?? book.sums[0]);
-  const rate = book.premium_rates[fsex].find((x) => x.age === fage)!;
+  const [benefit, setBenefit] = useState<Benefit>("level");
+  const rate = book.premium_rates[fsex].find((x) => x.age === fage)![benefit];
+  const MARGIN = book.margin;
   const premium = rate.per_rand * sum + rate.fixed;
   const ages = book.premium_rates[fsex].map((x) => x.age);
 
@@ -464,7 +464,7 @@ export function Quote({ r }: { r: Research }) {
 
         <section className="card" aria-label="Funeral cover quote">
           <h3>Funeral cover</h3>
-          <p>A fixed monthly premium, and a lump sum to your family when you die.</p>
+          <p>A fixed monthly premium for life, and a lump sum to your family when you die. The lump sum can stay the same or rise with inflation.</p>
           <div className="quote" style={{ marginTop: 20 }}>
             <div>
               <div className="field">
@@ -481,17 +481,36 @@ export function Quote({ r }: { r: Research }) {
                 <span className="label">Cover</span>
                 <Segmented label="Cover" value={sum} onChange={setSum} options={book.sums.map((x) => ({ id: x, label: `R${x / 1000}k` }))} />
               </div>
+              <div className="field">
+                <span className="label">The cover</span>
+                <Segmented
+                  label="Benefit"
+                  value={benefit}
+                  onChange={setBenefit}
+                  options={[
+                    { id: "level", label: "Stays the same" },
+                    { id: "rising", label: "Rises with inflation" },
+                  ]}
+                />
+              </div>
             </div>
             <div className="quote-result" aria-live="polite">
               <span className="line">You pay each month</span>
               <span className="big">{cents(premium)}</span>
               <span className="line">
                 Your family receives <b>{randFull(sum)}</b>
+                {benefit === "rising" ? ", more each year with inflation" : ""}
               </span>
               <span className="line" style={{ marginTop: 8 }}>
                 <b>{cents((1 - MARGIN) * rate.per_rand * sum)}</b> pays for the cover, <b>{cents((1 - MARGIN) * rate.fixed)}</b> for running the policy, and{" "}
                 <b>{cents(MARGIN * premium)}</b> is the {pct(MARGIN, 0)} margin.
               </span>
+              {benefit === "rising" && (
+                <span className="line">
+                  The cover rises on each anniversary by the year's inflation, never by less than 0% or more than 6%. It is priced as if it rose{" "}
+                  {pct(book.pricing_growth, 0)} a year, and the premium never changes.
+                </span>
+              )}
             </div>
           </div>
         </section>
@@ -516,8 +535,10 @@ export function Quote({ r }: { r: Research }) {
         <div className="callout">
           <strong>What a real quote would add</strong>
           These pension prices cover the income alone, with no loading for costs, commission or profit, and no health check. That is also why the
-          company's profit from insurance is small: almost all of it comes from investment return. The funeral premiums do include running costs (R15 a
-          month) and a {pct(MARGIN, 0)} margin.
+          company's profit from insurance is small: almost all of it comes from investment return. The funeral premiums do include running costs (R
+          {Math.round(book.expense / 12)} a month) and a {pct(book.margin, 0)} margin. They are priced on Stats SA registered deaths up to 2024, with
+          death rates that keep improving: HIV-related, external and other causes each follow their own trend, fitted on 2012 to 2024 without the Covid
+          years. Registration may be incomplete, which would make these premiums too cheap.
         </div>
       </section>
 
@@ -579,26 +600,52 @@ function AgeChart({ label, ages, color, first }: { label: string; ages: Book["an
     label: `${i === 0 && first ? first : f}–${f + 4}`,
     values: [{ key: "n", label: "Customers", color, value: ages.n[i] }],
   }));
-  return <BarChart label={label} groups={groups} fmt={(x) => thousands(x)} height={220} />;
+  return <BarChart label={label} groups={groups} fmt={(x) => thousands(Math.round(x))} height={220} />;
 }
 
 export function Customers({ r }: { r: Research }) {
-  const b = r.v3!.book!;
+  const v = r.v6!;
+  const b = v.book;
   const a = b.annuities, f = b.funeral;
   const rising = (a.types["inflation-linked"] ?? 0) / a.n;
   const women = (f.sexes.Female ?? 0) / f.n;
+  const risingCover = f.benefits.rising / f.n;
   const ago = (n: number) => (n === 0 ? "this year" : n === 1 ? "a year ago" : `${n} years ago`);
+  const onePct = (x: number) => randM(0.01 * Math.abs(x), 1);
   return (
     <>
       <PageHead kicker="The customers" title="Who the company covers">
-        {thousands(a.n)} pensioners and {thousands(f.n)} funeral policyholders, all invented. I drew them at random, from a fixed seed in{" "}
+        {thousands(Math.round(a.n))} pensioners and {thousands(Math.round(f.n))} funeral policyholders, all invented. I drew {thousands(b.drawn.annuities)}{" "}
+        pensioners and {thousands(b.drawn.funeral)} funeral policies at random, from a fixed seed in{" "}
         <a href={`${REPO}/blob/main/research/book_v3.py`} target="_blank" rel="noreferrer">
           book_v3.py
         </a>
-        : pensions bought at 55 to 75 with incomes spread around R60,000 a year, and funeral policies taken out at around 38 for R10,000 to R30,000 of cover.
-        The shapes are my choices, not taken from any insurer's data. Funeral premiums are priced on a table of 2017 to 2019 death rates; the life
-        expectancy forecast below is the original mortality model (v1), which prices the pensions.
+        : pensions bought at 55 to 75 with incomes spread around R60,000 a year, and funeral policies taken out at around 38 for R10,000 to R30,000 of cover,
+        half of them rising with inflation. The shapes are my choices, not taken from any insurer's data. The size of each line is not: it is set by the two
+        rules below, so each drawn pensioner counts as {num(b.weights.annuities, 2)} of one and each drawn funeral policy as {num(b.weights.funeral, 2)}.
       </PageHead>
+
+      <section className="panel">
+        <h2 className="serif">How big each line is, and why</h2>
+        <p className="note">
+          <strong>The mix.</strong> Pensions and funeral cover are bets on death rates in opposite directions. If people die sooner than expected, the pensions
+          cost less and the funeral claims more. I sized the funeral line so that the two cancel: if every death rate in both books were 1% higher, the pensions
+          would cost {onePct(v.scales.annuities * v.exposures.annuities)} less and the funeral claims {onePct(v.scales.funeral * v.exposures.funeral)} more. That
+          takes {num(v.mix, 1)} times as much of the drawn funeral book as of the drawn pensions, or {Math.round(v.policies.funeral / v.policies.annuitants)}{" "}
+          funeral policies to each pensioner.
+        </p>
+        <p className="note">
+          <strong>The size.</strong> With that mix held, I scaled the whole book until solvency cover on {randM(v.main.own_funds)} of capital was{" "}
+          {coverPct(v.main.cover)}, the median for South African life insurers in 2025 (SARB, <i>Financial Stability Review</i>, 2026). Before this, the
+          book had {thousands(v.v5.policies.annuities)} pensioners and {thousands(v.v5.policies.funeral)} funeral policies, counts with nothing behind them; on
+          those, cover was {coverPct(v.v5.cover)}.
+        </p>
+        <p className="note caveat">
+          The offset holds for a mistake in the level of death rates, not in their trend. Improvement that runs 1 point a year faster than assumed changes the
+          pensions by {randM(v.trend.annuities, 1)} and the funeral line by {randM(v.trend.funeral, 1)}, so {randM(v.trend.total, 1)} is left over. The
+          regulator's formula treats the two risks as separate, and recognises only part of the offset: see the Capital page.
+        </p>
+      </section>
 
       <div className="grid two">
         <section className="card">
@@ -630,8 +677,11 @@ export function Customers({ r }: { r: Research }) {
               <div className="sub">median age</div>
             </div>
             <div className="metric">
-              <div className="value">{cents(f.median_premium)}</div>
-              <div className="sub">median monthly premium</div>
+              <div className="value">{pct(risingCover, 0)}</div>
+              <div className="sub">
+                have cover that rises with inflation; median premium {cents(f.median_premium.rising)} a month, against {cents(f.median_premium.level)} for level
+                cover
+              </div>
             </div>
             <div className="metric">
               <div className="value">{pct(women, 0)}</div>
@@ -647,7 +697,7 @@ export function Customers({ r }: { r: Research }) {
 
       <section className="section">
         <h2>A few of them</h2>
-        <p className="sub">The first policies in the book.</p>
+        <p className="sub">The first drawn policies of each kind.</p>
         <div className="grid four">
           {a.sample.map((p) => (
             <div className="card person" key={`a${p.id}`}>
@@ -676,7 +726,7 @@ export function Customers({ r }: { r: Research }) {
                   {PERSON[p.sex]}, {p.age}. Joined at {p.entry_age}, {ago(p.years_in_force)}.
                 </p>
                 <div className="money">
-                  {randFull(p.sum_assured)} <small>cover for {cents(p.premium)} a month</small>
+                  {randFull(p.sum_assured)} <small>{p.benefit === "rising" ? "rising" : "level"} cover for {cents(p.premium)} a month</small>
                 </div>
               </div>
             </div>
@@ -688,7 +738,7 @@ export function Customers({ r }: { r: Research }) {
         <h2>How long pensioners might live</h2>
         <p className="sub">
           Every pension depends on this. South African life expectancy fell sharply with HIV and recovered with treatment, so the past is a poor
-          straight-line guide to the future.
+          straight-line guide to the future. The pensions are priced on the original mortality model (v1); funeral cover on its own table, from deaths to 2024.
         </p>
         {r.history && <History r={r} />}
         <FanPanel r={r} />
@@ -701,52 +751,55 @@ export function Customers({ r }: { r: Research }) {
 // Investments -------------------------------------------------------------------------------------------------------
 
 export function Investments({ r }: { r: Research }) {
-  const v = r.v3!;
-  const k = v.key_rate;
+  const v = r.v6!;
   const m = v.main;
   const [curve, setCurve] = useState<"real" | "nominal">("real");
-  const holdings: Bar[] = k
-    ? [
-        ...Object.entries(k.holdings.real).map(([bond, x]) => ({ key: bond, name: bond, note: "Inflation-linked", value: x, label: randM(x), color: "var(--s1)" })),
-        ...Object.entries(k.holdings.nominal).map(([bond, x]) => ({ key: bond, name: bond, note: "Fixed-rate", value: x, label: randM(x), color: "var(--s2)" })),
-        { key: "bill", name: "Treasury bill", note: "182 days, cash", value: m.assets.bill, label: randM(m.assets.bill), color: "#8a968f" },
-      ].sort((a, b) => b.value - a.value)
-    : [];
+  const kinds = [
+    ["real", "Inflation-linked", "var(--s1)"],
+    ["nominal", "Fixed-rate", "var(--s2)"],
+  ] as const;
+  const holdings: Bar[] = [
+    ...kinds.flatMap(([kind, note, color]) =>
+      Object.entries(m.holdings[kind] ?? {}).map(([bond, x]) => ({ key: bond, name: bond, note, value: x, label: randM(x, 1), color })),
+    ),
+    { key: "bill", name: "Treasury bill", note: "182 days, cash", value: m.assets.bill, label: randM(m.assets.bill, 1), color: "#8a968f" },
+  ].sort((a, b) => b.value - a.value);
+  const bonds = holdings.filter((x) => x.key !== "bill");
+  const L = m.dv01.liability, P = m.dv01.portfolio;
   const groups: BarGroup[] = KEYS.map((t) => ({
     key: t,
     label: `${t} years`,
     values: [
-      { key: "l", label: "The pensions", color: "var(--s1)", value: m.dv01[curve].liability[t] / 1e3 },
-      { key: "d", label: "First portfolio (two bonds)", color: "var(--s2)", value: m.dv01[curve].portfolio[t] / 1e3 },
-      ...(k ? [{ key: "k", label: "Rebalanced portfolio", color: "var(--s3)", value: k.dv01[curve].portfolio[t] / 1e3 }] : []),
+      { key: "l", label: "What is owed, both lines", color: "var(--s1)", value: L[`${curve} ${t}`] / 1e3 },
+      { key: "p", label: "The bonds held", color: "var(--s3)", value: P[`${curve} ${t}`] / 1e3 },
     ],
   }));
-  const d = m.dv01.real;
+  const short = KEYS.filter((t) => L[`nominal ${t}`] < 0);
+  const bondNames = bonds.map((x) => `${(x.note ?? "").toLowerCase()} ${x.name}`).join(" and ");
   return (
     <>
       <PageHead kicker="Investments" title="Where the money is">
-        The money behind the pensions is in South African government bonds and a Treasury bill, chosen so their value moves in step with what is owed.
+        The money is in South African government bonds and a Treasury bill. The bonds are chosen so their value moves in step with what the company owes, the
+        pensions and the funeral business together.
       </PageHead>
 
-      {k && (
-        <section className="card">
-          <h3>What the company holds today</h3>
-          <p>
-            {randM(m.assets.total)} across {holdings.length - 1} government bonds and a Treasury bill. Inflation-linked bonds pay the pensions that rise with
-            inflation; fixed-rate bonds pay the level ones.
-          </p>
-          <HBars rows={holdings} />
-          <p className="note caveat">
-            All of it is lent to one borrower, the South African government. The regulator's formula charges nothing for that, so neither does this model, but a
-            sovereign downgrade or default would hit every asset at once.
-          </p>
-        </section>
-      )}
+      <section className="card">
+        <h3>What the company holds today</h3>
+        <p>
+          {randM(m.assets.total)} in all. {bonds.length === 1 ? `One bond, the ${bondNames}, covers` : `${bonds.length} bonds cover`} the{" "}
+          {randM(m.assets.matched, 1)} owed to customers; the {randM(m.assets.bill)} of risk margin and own capital is in the bill.
+        </p>
+        <HBars rows={holdings} />
+        <p className="note caveat">
+          All of it is lent to one borrower, the South African government. The regulator's formula charges nothing for that, so neither does this model, but a
+          sovereign downgrade or default would hit every asset at once.
+        </p>
+      </section>
 
       <section className="panel">
         <div className="panel-head">
           <div>
-            <h2 className="serif">Matching the pensions, point by point on the curve</h2>
+            <h2 className="serif">Matching the whole book, point by point on the curve</h2>
             <p className="eyebrow">
               Value lost if {curve === "real" ? "inflation-linked" : "fixed-rate"} yields rise by 0.01% at one point on the curve, R thousand
             </p>
@@ -756,8 +809,8 @@ export function Investments({ r }: { r: Research }) {
             value={curve}
             onChange={setCurve}
             options={[
-              { id: "real", label: "Rising pensions" },
-              { id: "nominal", label: "Level pensions" },
+              { id: "real", label: "Inflation-linked" },
+              { id: "nominal", label: "Fixed-rate" },
             ]}
           />
         </div>
@@ -769,11 +822,29 @@ export function Investments({ r }: { r: Research }) {
             </span>
           ))}
         </div>
-        <BarChart label="Sensitivity of the pensions and of each bond portfolio to a 0.01% rise in yields at 5, 10, 20 and 30 years, R thousand" groups={groups} fmt={(x) => `R${num(x, 0)}k`} height={260} />
+        <BarChart
+          label={`Sensitivity of what is owed and of the bonds held to a 0.01% rise in ${curve === "real" ? "inflation-linked" : "fixed-rate"} yields at 5, 10, 20 and 30 years, R thousand`}
+          groups={groups}
+          fmt={(x) => `R${num(x, 0)}k`}
+          height={260}
+        />
         <p className="note">
-          When interest rates move, the value of the pensions moves, and so must the bonds behind them. My first portfolio held two bonds of each kind that matched the
-          pensions on average, but bunched all the risk around 10 years: R{num(d.portfolio["10"] / 1e3, 0)}k against the pensions' R{num(d.liability["10"] / 1e3, 0)}k,
-          and nothing at 30 years against R{num(d.liability["30"] / 1e3, 0)}k. {k ? "The rebalanced portfolio matches the pensions at all four points, so a change in the shape of the curve no longer hits only one side." : ""}
+          When interest rates rise, what the company owes on the pensions falls, and so does the value of the funeral business's future profits. The two pull in
+          opposite directions, so much of the risk cancels before any bond is bought. What is left is mostly on the inflation-linked curve, where the bonds are
+          held. I chose them by least squares: non-negative holdings worth exactly what is owed, as close as possible to its sensitivity at 5, 10, 20 and 30
+          years on both curves at once.
+        </p>
+        <p className="note">
+          On the fixed-rate curve, what is owed{" "}
+          {short.length ? (
+            <>
+              goes up when yields rise at {short.join(" and ")} years (R{num(-L[`nominal ${short[short.length - 1]}`] / 1e3, 0)}k at{" "}
+              {short[short.length - 1]} years): the funeral profits, discounted at fixed rates, dominate. Matching that would mean borrowing bonds and selling
+              them, which the company does not do, so it is left open. That is why the fixed-rate charge on the Capital page is {randM(m.interest.nominal)}.
+            </>
+          ) : (
+            "is matched with fixed-rate bonds."
+          )}
         </p>
         <TableView>
           <table>
@@ -811,70 +882,73 @@ export function Investments({ r }: { r: Research }) {
 // Capital -----------------------------------------------------------------------------------------------------------
 
 export function Capital({ r }: { r: Research }) {
-  const v = r.v3!;
-  const cross = crossing(r);
-  const m = v.main, u = v.unmatched, k = v.key_rate;
-  const now = current(v);
-  const median = v.checks.K5.industry_median;
+  const v = r.v6!;
+  const m = v.main, u = v.unmatched, o = v.v5_matching;
+  const floor = v.projection?.capital?.levels.find((x) => x.cover < 1.5);
   const strategies: Bar[] = [
     { key: "u", name: "Everything in cash", note: "No bonds", value: u.cover, label: coverPct(u.cover), color: "var(--s2)" },
-    { key: "m", name: "First portfolio", note: "Two bonds of each kind, near 10 years", value: m.cover, label: coverPct(m.cover), color: "var(--s3)" },
-    ...(k ? [{ key: "k", name: "Rebalanced", note: `${Object.keys(k.holdings.real).length + Object.keys(k.holdings.nominal).length} bonds, 5 to 30 years`, value: k.cover, label: coverPct(k.cover), color: "var(--s1)" }] : []),
+    { key: "o", name: "Pensions matched on their own", note: "Rising funeral claims hedged, the rest of the funeral line in cash", value: o.cover, label: coverPct(o.cover), color: "var(--s3)" },
+    { key: "m", name: "The whole book matched together", note: "What it holds", value: m.cover, label: coverPct(m.cover), color: "var(--s1)" },
   ];
-  const loss = (a: string, b: string) => Math.max(now.rate_losses?.[a] ?? 0, now.rate_losses?.[b] ?? 0);
-  const realWorst = (now.rate_losses?.["real down"] ?? 0) >= (now.rate_losses?.["real up"] ?? 0) ? "fall" : "rise";
-  const nomWorst = (now.rate_losses?.["nominal up"] ?? 0) >= (now.rate_losses?.["nominal down"] ?? 0) ? "rise" : "fall";
+  const loss = (a: string, b: string) => Math.max(m.rate_losses[a] ?? 0, m.rate_losses[b] ?? 0);
+  const realWorst = (m.rate_losses["real down"] ?? 0) >= (m.rate_losses["real up"] ?? 0) ? "fall" : "rise";
+  const nomWorst = (m.rate_losses["nominal up"] ?? 0) >= (m.rate_losses["nominal down"] ?? 0) ? "rise" : "fall";
   const stress: Bar[] = [
-    { key: "lon", name: "People live longer", note: "The regulator's test: pensioners' death rates 10% lower, and improving 1 point a year faster", value: now.life.longevity, label: randM(now.life.longevity, 1), color: "var(--s1)" },
+    { key: "lon", name: "Pensioners live longer", note: "The regulator's test: pensioners' death rates 10% lower, and improving 1 point a year faster", value: m.life.longevity, label: randM(m.life.longevity, 1), color: "var(--s1)" },
     { key: "real", name: `Inflation-linked yields ${realWorst}`, note: "By about half to three quarters", value: loss("real down", "real up"), label: randM(loss("real down", "real up"), 1), color: "var(--s1)" },
     { key: "nom", name: `Fixed-rate yields ${nomWorst}`, note: "By 30% to 50% at most terms", value: loss("nominal up", "nominal down"), label: randM(loss("nominal up", "nominal down"), 1), color: "var(--s1)" },
-    { key: "exp", name: "Costs rise", note: "Running costs 10% up, inflation 2 points up", value: now.life.expense, label: randM(now.life.expense, 1), color: "var(--s1)" },
-    { key: "lapse", name: "Customers leave", note: "40% of funeral policies cancelled at once", value: now.life.lapse, label: randM(now.life.lapse, 1), color: "var(--s1)" },
-    { key: "op", name: "Something breaks", note: "Systems, people or fraud", value: now.op, label: randM(now.op, 1), color: "var(--s1)" },
-    { key: "mort", name: "More funeral claims", note: "Death rates 15% higher", value: now.life.mortality, label: randM(now.life.mortality, 1), color: "var(--s1)" },
-    { key: "cat", name: "A pandemic", note: "A spike in deaths over three months", value: now.life.catastrophe, label: randM(now.life.catastrophe, 1), color: "var(--s1)" },
+    { key: "exp", name: "Costs rise", note: "Running costs 10% up, inflation 2 points up", value: m.life.expense, label: randM(m.life.expense, 1), color: "var(--s1)" },
+    { key: "lapse", name: "Customers leave", note: "40% of funeral policies cancelled at once", value: m.life.lapse, label: randM(m.life.lapse, 1), color: "var(--s1)" },
+    { key: "op", name: "Something breaks", note: "Systems, people or fraud", value: m.op, label: randM(m.op, 1), color: "var(--s1)" },
+    { key: "mort", name: "More funeral claims", note: "Death rates 15% higher", value: m.life.mortality, label: randM(m.life.mortality, 1), color: "var(--s1)" },
+    { key: "cat", name: "A pandemic", note: "A spike in deaths over three months", value: m.life.catastrophe, label: randM(m.life.catastrophe, 1), color: "var(--s1)" },
   ].sort((a, b) => b.value - a.value);
   const sum = stress.reduce((a, x) => a + x.value, 0);
+  const { mortality: mo, longevity: lo } = m.life;
+  const pair = Math.sqrt(mo * mo + lo * lo - 2 * 0.25 * mo * lo);
+  const sens = [
+    { adj: 0.8, s: v.sensitivities["funeral 0.8"] },
+    { adj: 1, s: m },
+    { adj: 1.2, s: v.sensitivities["funeral 1.2"] },
+  ].filter((x) => x.s);
   return (
     <>
       <PageHead kicker="Capital" title="Is there enough capital?">
         The Prudential Authority asks every insurer to hold enough capital to survive a 1-in-200 year: the solvency capital requirement. Solvency cover is the
-        capital held divided by that requirement, and it has to be at least 100%. The pensions are valued on the original mortality model (v1); funeral claims on a
-        table of 2017 to 2019 death rates.
+        capital held divided by that requirement, and it has to be at least 100%. The pensions are valued on the original mortality model (v1); funeral claims on
+        the funeral table from deaths to 2024, improving.
       </PageHead>
 
       <div className="grid three">
-        <Stat label="Solvency cover today" value={coverPct(now.cover)} good={now.cover >= 1}>
-          {now.cover >= 1 ? <Pill kind="good">Meets the requirement</Pill> : <Pill kind="bad">Below the requirement</Pill>}
+        <Stat label="Solvency cover today" value={coverPct(m.cover)} good={m.cover >= 1}>
+          <Pill kind="good">The industry median, by design</Pill>
         </Stat>
-        <Stat label="Capital required" value={randM(now.scr)} sub="To survive a 1-in-200 year" />
-        <Stat label="Capital held" value={randM(now.own_funds)} sub={`${coverPct(median)} cover, the life industry's typical level, would need ${randM(now.scr * median)}`} />
+        <Stat label="Capital required" value={randM(m.scr, 1)} sub="To survive a 1-in-200 year" />
+        <Stat
+          label="Capital held"
+          value={randM(m.own_funds)}
+          sub={floor ? `${randM(floor.own_funds, 1)} would give exactly 100%; the Next five years page runs both` : "The book is sized to it"}
+        />
       </div>
-      {cross && (
-        <p className="note">
-          With more capital, the share of five-year futures that stay covered every year crosses the 95% target between {randM(cross.lo.own_funds)} (
-          {pct(cross.lo.share_covered, 1)}) and {randM(cross.hi.own_funds)} ({pct(cross.hi.share_covered, 1)}), the two completed runs either side of it; the
-          precision was fixed before the {randM(cross.lo.own_funds)} result was seen, and no further points were run to narrow it.{" "}
-          {cross.lo.stresses["S1 Rates fall"] < 1 && cross.hi.stresses["S1 Rates fall"] >= 1
-            ? `At ${randM(cross.lo.own_funds)} a fall in interest rates still takes cover below 100% (${coverPct(cross.lo.stresses["S1 Rates fall"])}); at ${randM(cross.hi.own_funds)} it clears (${coverPct(cross.hi.stresses["S1 Rates fall"])}), so that is roughly where the rate risk stops binding. `
-            : ""}
-          These runs were added after the first result, and are on the Next five years page.
-        </p>
-      )}
+      <p className="note">
+        Cover is {coverPct(m.cover)} because I sized the book to make it so, not because the company earned it: the Customers page explains the rule. On the
+        drawn counts before that, {thousands(v.v5.policies.annuities)} pensioners and {thousands(v.v5.policies.funeral)} funeral policies, the requirement was{" "}
+        {randM(v.v5.scr)} and cover {coverPct(v.v5.cover)}.
+      </p>
 
       <section className="panel">
         <div className="panel-head">
           <div>
-            <h2 className="serif">How the money is invested decides whether it passes</h2>
-            <p className="eyebrow">Solvency cover on the same {randM(m.own_funds)} of capital, by how the money is invested</p>
+            <h2 className="serif">How the money is invested decides how big the book can be</h2>
+            <p className="eyebrow">Solvency cover on the same book and the same {randM(m.own_funds)} of capital, by how the money is invested</p>
           </div>
         </div>
-        <HBars rows={strategies} max={Math.max(1.3, ...strategies.map((s) => s.value))} marker={1} markerLabel="The line marks 100%, the regulator's minimum." />
+        <HBars rows={strategies} max={Math.max(2, ...strategies.map((s) => s.value))} marker={1} markerLabel="The line marks 100%, the regulator's minimum." />
         <p className="note">
-          With everything in cash, a fall in interest rates would raise the value of the pensions with nothing to offset it: the interest-rate charge is{" "}
-          {randM(u.market)} and the requirement {randM(u.scr)}, almost three times the capital. The first portfolio cut that charge to {randM(m.market)}, but
-          left the far end of the curve open.{" "}
-          {k ? `Spreading the bonds across 5 to 30 years cut it to ${randM(k.market)}, and took the same capital over the line.` : ""}
+          With everything in cash, the interest-rate charge is {randM(u.market)}. Matching the pensions on their own, as the earlier versions did, cuts it to{" "}
+          {randM(o.market)}, but leaves the funeral profits exposed: they are worth less when fixed-rate yields rise. Matching the whole book together lets the
+          two offset, and cuts the charge to {randM(m.market)}. The book was sized with this matching, so the other two rows show what the same book would look
+          like without it.
         </p>
       </section>
 
@@ -888,8 +962,13 @@ export function Capital({ r }: { r: Research }) {
         <HBars rows={stress} />
         <p className="note">
           Taken one at a time these losses add up to {randM(sum)}. They would not all happen in the same year, so the regulator's formula combines them into a
-          requirement of {randM(now.scr)}. People living longer is by far the biggest risk, {randM(now.life.longevity)} on its own, because the pensions are
-          paid for as long as people live. The funeral business barely registers. It is profitable, so its main risk is customers leaving.
+          requirement of {randM(m.scr, 1)}. Customers leaving is the biggest risk: the funeral policies are expected to earn {randM(-m.bel.funeral)}, and a 40%
+          wave of cancellations would lose that share of it. Costs are next, because the funeral line's running costs stretch decades ahead.
+        </p>
+        <p className="note">
+          The mix offsets a mistake in death rates, but the regulator's formula tests the two directions separately: funeral deaths 15% higher, and pensioners'
+          10% lower and improving faster, each with the other book held. It allows only for a correlation of −0.25 between them, so it counts the two together as {randM(pair, 1)},
+          not the near-zero the mix gives for a change in both at once. So the offset the book was built on shows up only in part in its capital.
         </p>
         <TableView>
           <table>
@@ -911,14 +990,43 @@ export function Capital({ r }: { r: Research }) {
               ))}
               <tr className="total">
                 <td>Requirement after combining (including operational)</td>
-                <td className="num">{(now.scr / 1e6).toFixed(1)}</td>
+                <td className="num">{(m.scr / 1e6).toFixed(1)}</td>
               </tr>
             </tbody>
           </table>
         </TableView>
       </section>
 
-      <AnnuitantSensitivity v={v} />
+      <section className="panel">
+        <h2 className="serif">The funeral death rates</h2>
+        <p className="note">
+          The funeral table is my own, from Stats SA registered deaths to 2024, and registration may be incomplete. These rows move every funeral death rate by
+          20% either way, at the same book size, so they show the effect of the basis alone. Lower death rates make the funeral line more profitable, and so
+          more exposed to customers leaving.
+        </p>
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Funeral death rates</th>
+                <th className="num">Owed</th>
+                <th className="num">Required</th>
+                <th className="num">Cover</th>
+              </tr>
+            </thead>
+            <tbody>
+              {sens.map(({ adj, s }) => (
+                <tr key={adj} className={adj === 1 ? "total" : undefined}>
+                  <td>{adj === 1 ? "As the table (used)" : `${pct(Math.abs(adj - 1), 0)} ${adj < 1 ? "lower" : "higher"}`}</td>
+                  <td className="num">{randM(s.bel.total, 1)}</td>
+                  <td className="num">{randM(s.scr, 1)}</td>
+                  <td className="num">{coverPct(s.cover)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
     </>
   );
 }
@@ -1026,42 +1134,34 @@ export function Built({ r }: { r: Research }) {
       },
     );
   }
-  if (v3) {
+  const v6 = r.v6, p6 = v6?.projection;
+  if (v6) {
     checks.push(
-      { claim: "The valuation engine is right", plain: "A simple month-by-month calculation agrees with the engine to better than one part in a trillion, under every stress.", verdicts: <Verdict pass={v3.checks.K1.pass} />, code: true },
-      {
-        claim: "Matching cuts the interest-rate charge below a quarter",
-        plain: `The first portfolio cut it from ${randM(v3.unmatched.market)} with everything in cash to ${randM(v3.main.market)}.`,
-        verdicts: <Verdict pass={v3.checks.K3.pass} />,
-      },
-      { claim: "Longevity is the largest risk", plain: "A sense check: for a pension book it could hardly come out otherwise.", verdicts: <Verdict pass={v3.checks.K4.pass} />, code: true },
+      { claim: "The mix is mortality-neutral", plain: "A 1% change in every death rate, both books at once, moves what is owed by less than a billionth of the pensions' change.", verdicts: <Verdict pass={v6.checks.D1.pass} />, code: true },
+      { claim: "The size gives cover of 1.8", plain: "Solved to within a millionth.", verdicts: <Verdict pass={v6.checks.D2.pass} />, code: true },
+      { claim: "Scaling is exact", plain: "At the old counts, the scaled engine reproduces the previous balance sheet to one part in ten billion.", verdicts: <Verdict pass={v6.checks.D3.pass} />, code: true },
+      { claim: "The bonds are worth what is owed, none borrowed", plain: "The whole-book match holds no negative position and is worth what is owed to customers, to one part in a hundred million.", verdicts: <Verdict pass={v6.checks.D5.pass} />, code: true },
+      { claim: "The funeral valuation is right", plain: "A month-by-month loop agrees with the engine for a sample policy under every stress, and the earlier checks hold at the new size.", verdicts: <Verdict pass={v6.checks.C4.pass && v6.checks.C5.pass && v6.checks.C6.pass} />, code: true },
     );
-    if (v3.key_rate)
-      checks.push({
-        claim: "Rebalancing beats the first portfolio",
-        plain: "Added after the first result was seen, and written down before it was run.",
-        verdicts: <Verdict pass={v3.key_rate.checks.K6.pass} />,
-      });
   }
-  const v4 = r.v4;
-  if (v4) {
-    const a2 = Object.values(v4.checks.A2);
+  if (p6) {
+    const a2 = Object.values(p6.checks.A2);
     checks.push(
       {
         claim: "The projection adds up",
         plain: "Each year's cash flows and the roll-forward of the accounts reconcile with the valuations at either end, to rounding.",
-        verdicts: <Verdict pass={v4.checks.R1.pass && v4.checks.R2.pass} />,
+        verdicts: <Verdict pass={p6.checks.R1.pass && p6.checks.R2.pass} />,
         code: true,
       },
       {
         claim: "Simulated rates move like real ones",
-        plain: `A year's change in the 10-year yield across the futures is within a third of its spread since 2011. Fixed-rate passes at ${num(v4.checks.E1.nominal.ratio, 2)} against a limit of 1.33, only just. The model as first written failed this for inflation-linked bonds; the change was committed before anything was projected.`,
-        verdicts: (["real", "nominal"] as const).map((k) => <Verdict key={k} pass={v4.checks.E1[k].pass} who={k === "real" ? "Inflation-linked" : "Fixed-rate"} />),
+        plain: `A year's change in the 10-year yield across the futures is within a third of its spread since 2011. Fixed-rate passes at ${num(p6.checks.E1.nominal.ratio, 2)} against a limit of 1.33, only just. The model as first written failed this for inflation-linked bonds; the change was committed before anything was projected.`,
+        verdicts: (["real", "nominal"] as const).map((k) => <Verdict key={k} pass={p6.checks.E1[k].pass} who={k === "real" ? "Inflation-linked" : "Fixed-rate"} />),
       },
       {
         claim: "Cover stays above 100% in 95% of futures",
-        plain: `It does in ${pct(v4.checks.A1.share_covered, 0)}. The bonds match the pensions, not the risk margin or the capital requirement.`,
-        verdicts: <Verdict pass={v4.checks.A1.pass} />,
+        plain: `It does in ${pct(p6.checks.A1.share_covered, 1)}, on ${randM(p6.central[0].own_funds)} of capital. At exactly 100% to start it does in ${pct(p6.capital?.levels[0].share_covered ?? 0, 1)}, which is reported, not tested.`,
+        verdicts: <Verdict pass={p6.checks.A1.pass} />,
       },
       {
         claim: "Cover stays above 100% under each disaster",
@@ -1070,11 +1170,32 @@ export function Built({ r }: { r: Research }) {
       },
     );
   }
+  // The earlier book, of drawn counts: kept as the record of how the size was reached.
+  const history: { claim: string; plain: string; verdicts: ReactNode }[] = [];
+  if (v3) {
+    history.push(
+      {
+        claim: "Matching cuts the interest-rate charge below a quarter (v3)",
+        plain: `The first portfolio cut it from ${randM(v3.unmatched.market)} with everything in cash to ${randM(v3.main.market)}.`,
+        verdicts: <Verdict pass={v3.checks.K3.pass} />,
+      },
+      { claim: "Longevity is the largest risk (v3)", plain: "On a book of 5,000 pensioners and 50,000 funeral policies it could hardly come out otherwise.", verdicts: <Verdict pass={v3.checks.K4.pass} /> },
+    );
+    if (v3.key_rate)
+      history.push({ claim: "Rebalancing beats the first portfolio (v3)", plain: "Added after the first result was seen, and written down before it was run.", verdicts: <Verdict pass={v3.key_rate.checks.K6.pass} /> });
+  }
+  if (r.v4) {
+    const a2 = Object.values(r.v4.checks.A2);
+    history.push(
+      { claim: "Cover stays above 100% in 95% of futures (v4)", plain: `It did in ${pct(r.v4.checks.A1.share_covered, 1)}.`, verdicts: <Verdict pass={r.v4.checks.A1.pass} /> },
+      { claim: "Cover stays above 100% under each disaster (v4)", plain: `${a2.filter(Boolean).length} of ${a2.length} passed.`, verdicts: <Verdict pass={a2.every(Boolean)} /> },
+    );
+  }
   return (
     <>
       <PageHead kicker="Methods" title="Methods and limitations">
-        I built this in four parts. For each, I wrote down the method, the tests and the pass marks, and committed them before running anything. Later changes
-        are dated and committed before the run they affect. Each card links the commit it was frozen at.
+        I built this in six parts. For each, I wrote down the method, the tests and the pass marks, and committed them before running anything. Later changes
+        are dated and committed before the run they affect, or marked as made after seeing a result. Each card links the commit it was frozen at.
       </PageHead>
 
       <div className="grid two">
@@ -1125,7 +1246,7 @@ export function Built({ r }: { r: Research }) {
             </svg>
           </div>
           <h3>Testing the capital</h3>
-          <p>The Prudential Authority's standard formula for solvency (SAM), applied to an invented book of pensions and funeral policies.</p>
+          <p>The Prudential Authority's standard formula for solvency (SAM), applied to an invented book of pensions and funeral policies, first on drawn counts.</p>
           <p>
             <a href={doc("PROTOCOL_v3.md")} target="_blank" rel="noreferrer">
               Plan
@@ -1154,6 +1275,45 @@ export function Built({ r }: { r: Research }) {
               Results
             </a>{" "}
             · <Frozen hash="fedf29aeeebc" when="26 Oct 2026, 11:49" />
+          </p>
+        </div>
+        <div className="card">
+          <div className="icon-badge" aria-hidden="true">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M4 19h16M6 19V9l6-5 6 5v10" />
+              <path d="M10 19v-5h4v5" />
+            </svg>
+          </div>
+          <h3>Funeral cover on its own table</h3>
+          <p>Funeral death rates from Stats SA deaths to 2024, improving by cause, and a funeral benefit that can rise with inflation, capped at 6% a year.</p>
+          <p>
+            <a href={doc("PROTOCOL_v5.md")} target="_blank" rel="noreferrer">
+              Plan
+            </a>{" "}
+            ·{" "}
+            <a href={doc("results/balance_v5.json")} target="_blank" rel="noreferrer">
+              Results
+            </a>{" "}
+            · <Frozen hash="5039d84c999a" when="27 Oct 2026, 09:39" />
+          </p>
+        </div>
+        <div className="card">
+          <div className="icon-badge" aria-hidden="true">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 3v18M5 7h14M5 7l-3 7h6zM19 7l-3 7h6z" />
+            </svg>
+          </div>
+          <h3>Sizing the book by rule</h3>
+          <p>The funeral line sized so a mistake in death rates cancels between the two lines, the whole book sized to the industry's median cover, and matched together.</p>
+          <p>
+            <a href={doc("PROTOCOL_v6.md")} target="_blank" rel="noreferrer">
+              Plan
+            </a>{" "}
+            ·{" "}
+            <a href={doc("results/mix_v6.json")} target="_blank" rel="noreferrer">
+              Results
+            </a>{" "}
+            · <Frozen hash="9e59992c5521" when="27 Oct 2026, 14:15" />
           </p>
         </div>
       </div>
@@ -1188,6 +1348,60 @@ export function Built({ r }: { r: Research }) {
       </section>
 
       <section className="section">
+        <h2>How the book got its size</h2>
+        <p className="sub">The earlier versions, kept as they ran. Their results are on the drawn counts, not the book the rest of the site shows.</p>
+        <div className="card">
+          <ul className="method">
+            {v3 && (
+              <li>
+                <strong>Drawn counts (v3)</strong>
+                I first drew {thousands(v3.book?.annuities.n ?? 5000)} pensioners and {thousands(v3.book?.funeral.n ?? 50000)} funeral policies, counts with
+                nothing behind them. On {randM(v3.main.own_funds)} of capital, the first portfolio gave cover of {coverPct(v3.main.cover)}
+                {v3.key_rate ? `, and rebalancing across 5 to 30 years ${coverPct(v3.key_rate.cover)}` : ""}. Longevity was the largest risk by far.
+              </li>
+            )}
+            {r.v4 && (
+              <li>
+                <strong>Five years ahead on drawn counts (v4)</strong>
+                {pct(r.v4.scenarios.A1.share_covered, 1)} of futures stayed covered every year, short of the 95% target. The exploratory capital levels put the
+                crossing between {cross ? `${randM(cross.lo.own_funds)} and ${randM(cross.hi.own_funds)}` : "levels above those run"}, with the extra capital
+                spread over every asset.
+              </li>
+            )}
+            {v6 && (
+              <li>
+                <strong>The funeral table (v5)</strong>
+                Repricing the funeral line on its own improving table, with a benefit that can rise, nearly doubled its expected profit (what it owes went from{" "}
+                {randM(v3?.main.bel.funeral ?? 0)} to {randM(v6.v5.bel.funeral)}). On the drawn counts the SCR was {randM(v6.v5.scr)} against {randM(v6.v5.own_funds)}{" "}
+                of capital, cover {coverPct(v6.v5.cover)}. A result that rested on counts with nothing behind them is why the size was then set by rule.
+              </li>
+            )}
+            {v6 && (
+              <li>
+                <strong>Size by rule (v6)</strong>
+                The mix sets {num(v6.mix, 1)} units of the drawn funeral book per unit of the drawn pensions, and the size sets {num(v6.scales.annuities, 3)} of
+                the drawn pensions: {thousands(v6.policies.annuitants)} pensioners and {thousands(v6.policies.funeral)} funeral policies. Every drawn policy keeps
+                its age, sex, amount and premium; only its weight changed.
+              </li>
+            )}
+          </ul>
+        </div>
+        {history.length > 0 && (
+          <div className="card" style={{ marginTop: 14 }}>
+            <ul className="checks">
+              {history.map((c) => (
+                <li key={c.claim}>
+                  <strong>{c.claim}</strong>
+                  <span className="verdicts">{c.verdicts}</span>
+                  <p>{c.plain}</p>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </section>
+
+      <section className="section">
         <h2>Changes after freezing</h2>
         <div className="card">
           <ul className="method">
@@ -1201,6 +1415,12 @@ export function Built({ r }: { r: Research }) {
               The frozen three-factor rate model failed its own check. The two-factor version was committed at <Commit hash="ce1ad56" when="12:08" />, and the
               projection results at <Commit hash="d50d59b" when="13:55" />. Its fixed-rate check, 1.32 against 1.33, was first seen in that run. The frozen model's
               results are reported too.
+            </li>
+            <li>
+              <strong>The cover 1.0 level (v6), after seeing the first run</strong>
+              The first solve for own funds stopped at cover 0.99999999991, a hair under 100%, so every future counted as below it at the start and the share
+              covered read 0. The solve was changed to step up to at least 100% at <Commit hash="28b6a26" when="27 Oct, 20:04" />, and rerun; nothing else
+              changed.
             </li>
             <li>
               <strong>Mortality revisions (v1.1 to v1.3), none adopted</strong>
@@ -1235,11 +1455,13 @@ export function Built({ r }: { r: Research }) {
           <ul className="method">
             <li>
               <strong>The customers are invented</strong>
-              Seeded random draws, in shapes I chose. A real book would differ in ages, sizes and mix.
+              Seeded random draws, in shapes I chose. The size and mix are set by rule, so they are consistent, but a real book would differ in ages, sizes and
+              mix.
             </li>
             <li>
               <strong>The pensioners' death rates are assumed</strong>
-              70% of the population's, a round number, not fitted to South African pensioners. The Capital page shows how much it matters.
+              70% of the population's, a round number, not fitted to South African pensioners. The balance sheet history below shows how much it mattered on the
+              drawn counts.
             </li>
             <li>
               <strong>Ranges are too narrow</strong>
@@ -1265,7 +1487,21 @@ export function Built({ r }: { r: Research }) {
             </li>
             <li>
               <strong>Fixed-rate yields fit poorly</strong>
-              The fixed-rate curve missed the 0.25% auction-yield target. It drives the level pensions and the funeral discounting.
+              The fixed-rate curve missed the 0.25% auction-yield target. It drives the level pensions and the funeral discounting, and so the open risk above.
+            </li>
+            <li>
+              <strong>Funeral deaths may be under-registered</strong>
+              The funeral table uses registered deaths over the UN's population with no completeness adjustment. If registration is incomplete, the funeral rates
+              are too low and the premiums too cheap.
+            </li>
+            <li>
+              <strong>The capital sees only part of the offset</strong>
+              The mix cancels a mistake in the level of death rates, not in their trend, and the regulator's formula charges mortality and longevity
+              separately.
+            </li>
+            <li>
+              <strong>Fixed-rate risk left open</strong>
+              The funeral profits' exposure to fixed-rate yields could only be matched by borrowing bonds to sell, which the company does not do.
             </li>
             <li>
               <strong>One borrower</strong>
@@ -1299,9 +1535,10 @@ export function Built({ r }: { r: Research }) {
           </Disclose>
         )}
         {v3 && (
-          <Disclose title="Balance sheet and solvency" sub={`SAM standard formula, valuation date ${longDate(v3.valuation_date)}`}>
+          <Disclose title="History: balance sheet on the drawn counts (v3)" sub={`SAM standard formula, valuation date ${longDate(v3.valuation_date)}, 5,000 pensioners and 50,000 funeral policies`}>
             <Interest v={v3} />
             <BalanceSheet v={v3} />
+            <AnnuitantSensitivity v={v3} />
           </Disclose>
         )}
       </section>
@@ -1312,7 +1549,8 @@ export function Built({ r }: { r: Research }) {
           <ul className="method">
             <li>
               <strong>Deaths</strong>
-              Statistics South Africa, Mortality and Causes of Death 1997 to 2022, unit records, distributed by DataFirst, University of Cape Town.
+              Statistics South Africa, Mortality and Causes of Death 1997 to 2024, unit records, distributed by DataFirst, University of Cape Town. The
+              funeral table leaves out 2023, whose registered deaths are essentially missing.
             </li>
             <li>
               <strong>Population and life tables</strong>
@@ -1325,7 +1563,7 @@ export function Built({ r }: { r: Research }) {
             <li>
               <strong>Capital rules</strong>
               Prudential Authority, Financial Soundness Standards for Insurers. Tax and the regulator's own risk-free curve are left out; the plans list
-              every simplification.
+              every simplification. The industry's median cover of 1.8: SARB, <i>Financial Stability Review</i>, 2026, Table B.2.
             </li>
             <li>
               <strong>Code</strong>
@@ -1358,7 +1596,7 @@ const STRESS: Record<string, { name: string; note: string }> = {
 };
 
 export function Future({ r }: { r: Research }) {
-  const v = r.v4!;
+  const v = r.v6!.projection!;
   const [rate, setRate] = useState<"nominal" | "real">("nominal");
   const y0 = Number(v.valuation_date.slice(0, 4));
   const years = v.central.map((_, t) => y0 + t);
@@ -1377,12 +1615,15 @@ export function Future({ r }: { r: Research }) {
   });
   const failed = Object.entries(v.stresses).filter(([, x]) => !x.A2);
   const below = s.below_one_share;
+  const [worstKey, worstStress] = Object.entries(v.stresses).sort((a, b) => Math.min(...a[1].cover) - Math.min(...b[1].cover))[0];
+  const frozen3 = v.esg.frozen_three_factor;
   const m = (x: number[]) => x.map((y) => y / 1e6);
   return (
     <>
       <PageHead kicker="The next five years" title="Does the cover hold up?">
         A look five years ahead, of the kind the regulator asks every insurer for: a thousand possible paths for interest rates and inflation, and five named
-        disasters, each run through the customers, the bonds and the capital, year by year. The pensions are valued on the original mortality model (v1) throughout.
+        disasters, each run through the customers, the bonds and the capital, year by year. Rising funeral cover grows with each year's inflation, and the
+        bonds are rematched to the whole book at every year-end. The pensions are valued on the original mortality model (v1) throughout.
       </PageHead>
 
       <div className="grid three">
@@ -1391,10 +1632,14 @@ export function Future({ r }: { r: Research }) {
           {s.A1.pass ? <Pill kind="good">Meets the target</Pill> : <Pill kind="bad">Misses the target</Pill>}
         </Stat>
         <Stat
-          label="Lowest cover if pensioners live longer"
-          value={coverPct(Math.min(...v.stresses["S2 Longevity"].cover))}
-          sub={`It would take ${randM(v.stresses["S2 Longevity"].capital_to_restore)} of new capital to get back to 100%`}
-          good={false}
+          label={`Lowest cover in a disaster: ${(STRESS[worstKey]?.name ?? worstKey).toLowerCase()}`}
+          value={coverPct(Math.min(...worstStress.cover))}
+          sub={
+            worstStress.capital_to_restore > 0
+              ? `It would take ${randM(worstStress.capital_to_restore)} of new capital to get back to 100%`
+              : "No new capital needed to stay above 100%"
+          }
+          good={Math.min(...worstStress.cover) >= 1}
         >
           {failed.length ? <Pill kind="bad">{failed.length} of 5 disasters go below 100%</Pill> : <Pill kind="good">Every disaster stays above 100%</Pill>}
         </Stat>
@@ -1429,14 +1674,17 @@ export function Future({ r }: { r: Research }) {
         />
         <p className="note">
           If interest rates follow their expected path, cover climbs from {coverPct(v.central[0].cover)} to {coverPct(v.central[5].cover)}: the business earns
-          more than the capital it ties up. But rates rarely do what is expected. In {pct(below, 0)} of the futures cover dips below 100% at least once, against
-          a target of no more than 5%. The bonds match what is owed to pensioners, but not the risk margin and capital requirement the regulator adds on top, so a
-          fall in rates still hurts.
+          more than the capital it ties up. Rates rarely do what is expected, but at {coverPct(c["50"][0])} the cushion is wide: cover dips below 100% at least
+          once in {pct(below, 1)} of the futures, against a limit of 5%, and the 5th percentile never falls below {coverPct(Math.min(...c["5"]))}. The bonds
+          match what is owed, not the risk margin and capital requirement the regulator adds on top, so a fall in rates still costs cover.{" "}
+          {r.v4 && `On the earlier book of invented counts, at ${coverPct(r.v4.scenarios.cover["50"][0])} to start, ${pct(r.v4.scenarios.below_one_share, 0)} of futures dipped below.`}
         </p>
         <p className="note caveat">
           The rate model was fitted on 2011 to 2026 and judged on the same years, so these ranges are likely narrower than the real ones. With March to May 2020
-          left out of the fit, {pct(v.sensitivities.covid_excluded.A1.share_covered, 0)} of futures stay covered rather than {pct(s.A1.share_covered, 0)}: three
-          months of data move the answer that much.
+          left out of the fit, {pct(v.sensitivities.covid_excluded.A1.share_covered, 1)} of futures stay covered rather than {pct(s.A1.share_covered, 1)}. On the
+          three-factor rate model I first froze, which failed its own check for inflation-linked rates (it moves them{" "}
+          {num(frozen3.checks.E1.real.ratio, 2)} times as much as history), only {pct(frozen3.cover.A1.share_covered, 1)} would: the answer depends on the rate
+          model more than on anything else here.
         </p>
         <TableView>
           <table>
@@ -1517,16 +1765,19 @@ export function Future({ r }: { r: Research }) {
         </div>
         <HBars rows={stress} max={Math.max(1.5, ...stress.map((x) => x.value))} marker={1} markerLabel="The line marks 100%, the regulator's minimum." />
         <p className="note">
-          A pandemic year or a wave of cancellations is absorbed. A fall in interest rates takes cover below 100% at once, and it recovers within{" "}
-          {Math.max(...failed.filter(([k]) => k !== "S2 Longevity").map(([, x]) => x.cover.findIndex((y) => y >= 1)), 0)} years as rates drift back. Pensioners living
-          longer is the one the company could not ride out: the pensions would cost {randM(v.stresses["S2 Longevity"].losses + v.stresses["S2 Longevity"].csm_used)} more,
-          and it would take {randM(v.stresses["S2 Longevity"].capital_to_restore)} of new capital to get back to 100%. This is a harsher test than the
-          regulator's own longevity shock on the Capital page (death rates 10% lower and improving faster), which is what sets the capital requirement.
+          {failed.length
+            ? `${failed.length} of ${Object.keys(v.stresses).length} take cover below 100%.`
+            : `None takes cover below 100% on ${randM(v.central[0].own_funds)} of capital.`}{" "}
+          The worst is {(STRESS[worstKey]?.name ?? worstKey).toLowerCase()}, at {coverPct(Math.min(...worstStress.cover))}. Pensioners living 20% longer
+          would cost {randM(v.stresses["S2 Longevity"].losses + v.stresses["S2 Longevity"].csm_used)}, a harsher test than the regulator's own longevity shock on
+          the Capital page, which sets the capital requirement.{" "}
+          {Math.min(...v.stresses["S4 Lapse wave"].cover) > v.central[0].cover &&
+            "A wave of cancellations raises cover: the profit lost is smaller than the capital the regulator no longer asks for against those customers leaving."}
         </p>
         <div className="callout">
           <strong>What I would do next</strong>
-          Reinsure part of the longevity risk, which shrinks both the capital requirement and the risk margin, and hedge their sensitivity to rates as well as the
-          pensions'. Neither is modelled here.
+          The futures move interest rates and inflation, not death rates or lapses, which enter only through the named disasters. Simulating those as well, and
+          reinsuring part of the lapse and longevity risk, are not modelled here.
         </div>
         <TableView>
           <table>
@@ -1561,7 +1812,7 @@ export function Future({ r }: { r: Research }) {
         </TableView>
       </section>
 
-      {v.capital && v.capital.levels.length > 1 && <CapitalCurve c={v.capital} />}
+      {v.capital && v.capital.levels.length > 1 && <CapitalLevels c={v.capital} />}
 
       <section className="panel">
         <div className="panel-head">
@@ -1622,60 +1873,32 @@ export function Future({ r }: { r: Research }) {
   );
 }
 
-/** The added runs: starting capital against the share of futures covered throughout. */
-function CapitalCurve({ c }: { c: NonNullable<NonNullable<Research["v4"]>["capital"]> }) {
+/** v6's two capital levels: R400 million (cover 1.8, the main run) and the level at which cover starts at 1.0. */
+function CapitalLevels({ c }: { c: NonNullable<NonNullable<Research["v4"]>["capital"]> }) {
   const L = c.levels;
-  const xs = L.map((x) => x.own_funds / 1e6);
-  const around = levelsAround(L);
-  const hit = around?.hi, below = around?.lo;
   const names = Object.keys(L[0].stresses);
-  const ref = L.find((x) => x.own_funds === REFERENCE);
-  const cleared = ref ? names.filter((n) => ref.stresses[n] >= 1).length : 0;
+  const low = L[0], high = L[L.length - 1];
+  const under = names.filter((n) => low.stresses[n] < 1);
   return (
     <section className="panel">
       <div className="panel-head">
         <div>
-          <h2 className="serif">How much capital would be enough?</h2>
-          <Pill kind="warn">Exploratory</Pill>
-          <p className="eyebrow">Share of the 1,000 futures above 100% at every year-end, by starting capital. Rule: {c.rule}.</p>
+          <h2 className="serif">A company that only just meets the requirement</h2>
+          <p className="eyebrow">The same book on two levels of starting capital. Rule: {c.rule}.</p>
         </div>
       </div>
-      <Legend
-        items={[
-          { label: "Futures covered throughout", color: "var(--s1)" },
-          { label: "The 95% target", color: "var(--muted-foreground)", kind: "dash" },
-        ]}
-      />
-      <YearChart
-        label={`Share of futures covered at every year-end against starting capital from R${xs[0]}m to R${xs[xs.length - 1]}m; ${c.rule}`}
-        series={[
-          { key: "t", label: "The 95% target", color: "var(--muted-foreground)", xs, ys: xs.map(() => 0.95), dash: true },
-          { key: "s", label: "Futures covered throughout", color: "var(--s1)", xs, ys: L.map((x) => x.share_covered) },
-        ]}
-        points={[{ key: "p", label: "Run", color: "var(--s1)", xs, ys: L.map((x) => x.share_covered) }]}
-        fmt={(x) => pct(x, 0)}
-        xFmt={(x) => `R${num(x, 0)}m`}
-        height={280}
-      />
       <p className="note">
-        I added this after seeing that only {pct(L[0].share_covered, 0)} of futures stay covered at {randM(L[0].own_funds)}, so it is exploratory, designed
-        after the first result was seen, not a test set beforehand. Every level uses the same 1,000 futures, regenerated from the same seed on the same
-        calibration, and the same five disasters; each extra rand is invested in the same mix of bonds and bills as today's assets.{" "}
-        {hit && below
-          ? `The 95% target is crossed between ${randM(below.own_funds)} (${pct(below.share_covered, 1)}) and ${randM(hit.own_funds)} (${pct(hit.share_covered, 1)}), the two completed runs either side of it. The precision was fixed before the ${randM(below.own_funds)} result was seen, and no further points were run to narrow it.${ref ? ` ${randM(ref.own_funds)}, the industry-typical cover of about 1.8 times, is shown as a reference point (${pct(ref.share_covered, 1)}).` : ""}`
-          : `Even ${randM(L[L.length - 1].own_funds)} does not reach 95%.`}{" "}
-        {hit && below && below.stresses["S1 Rates fall"] < 1 && hit.stresses["S1 Rates fall"] >= 1
-          ? `At ${randM(below.own_funds)} a fall in interest rates still takes cover below 100% (${coverPct(below.stresses["S1 Rates fall"])}); at ${randM(hit.own_funds)} it clears (${coverPct(hit.stresses["S1 Rates fall"])}), so that is roughly where the rate risk stops binding. `
-          : ""}
-        Every point is a full run; the line between them is drawn, not modelled. These results are final, on the original mortality model (v1).
+        I set both levels before running either. {randM(high.own_funds)} is the industry median, cover {coverPct(high.cover)}. {randM(low.own_funds, 1)} is
+        where cover starts at exactly 100%, the regulator's floor, so it shows how often a company that just meets its requirement falls below it. The bonds
+        stay matched to what is owed; only the Treasury bill changes. Both use the same 1,000 futures and the same five disasters.
       </p>
-      {ref && (
-        <p className="note caveat">
-          The futures simulate interest rates and inflation; longevity enters only through the named shocks, and because that model's forecast ranges are lower bounds
-          (it failed its calibration test), the true longevity risk may be larger than those shocks. {randM(ref.own_funds)} clearing {cleared} of {names.length}{" "}
-          disasters should be read in that light.
-        </p>
-      )}
+      <p className="note">
+        At the floor, {pct(low.share_covered, 1)} of futures stay covered every year, against {pct(high.share_covered, 1)} at the median. The first year is the
+        risky one: {pct(low.below_one_by_year?.[1] ?? 0, 1)} of futures are below 100% at its end, and{" "}
+        {pct(low.below_one_by_year?.[(low.below_one_by_year?.length ?? 1) - 1] ?? 0, 1)} by the fifth, as the business earns its way up.{" "}
+        {under.length > 0 &&
+          `${under.length} of ${names.length} disasters take it below: ${under.map((n) => `${(STRESS[n]?.name ?? n).toLowerCase()} (${coverPct(low.stresses[n])})`).join(", ")}.`}
+      </p>
       <div className="table-wrap">
         <table>
           <thead>
@@ -1684,6 +1907,7 @@ function CapitalCurve({ c }: { c: NonNullable<NonNullable<Research["v4"]>["capit
               <th className="num">Capital required</th>
               <th className="num">Cover today</th>
               <th className="num">Futures covered throughout</th>
+              <th className="num">Below 100% after a year</th>
               {names.map((n) => (
                 <th key={n} className="num">
                   Lowest, {(STRESS[n]?.name ?? n).toLowerCase()}
@@ -1694,10 +1918,11 @@ function CapitalCurve({ c }: { c: NonNullable<NonNullable<Research["v4"]>["capit
           <tbody>
             {L.map((x) => (
               <tr key={x.own_funds}>
-                <td>{randM(x.own_funds)}</td>
-                <td className="num">{randM(x.scr)}</td>
+                <td>{randM(x.own_funds, 1)}</td>
+                <td className="num">{randM(x.scr, 1)}</td>
                 <td className="num">{coverPct(x.cover)}</td>
                 <td className="num">{pct(x.share_covered, 1)}</td>
+                <td className="num">{pct(x.below_one_by_year?.[1] ?? 0, 1)}</td>
                 {names.map((n) => (
                   <td key={n} className="num">
                     {coverPct(x.stresses[n])}
